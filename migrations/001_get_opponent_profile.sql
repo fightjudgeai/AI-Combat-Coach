@@ -72,6 +72,15 @@ BEGIN
       'sub_rate',    fps.sub_rate
     ),
     'style',       f.style_label,
+    'style_tags',  f.style_tags,
+    'stance',      f.stance,
+    'tendencies', jsonb_build_object(
+      'pressure_rating',  f.pressure_rating,
+      'clinch_frequency', f.clinch_frequency,
+      'grappling_first',  f.grappling_first,
+      'late_round_fade',  f.late_round_fade,
+      'finish_urgency',   f.finish_urgency
+    ),
     'recent_fights', (
       SELECT jsonb_agg(
         jsonb_build_object(
