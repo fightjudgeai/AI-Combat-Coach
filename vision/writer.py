@@ -27,8 +27,29 @@ def create_job(
     source_type: str,
     fighter_id: Optional[str] = None,
 ) -> str:
-    """Insert a vision_job row in 'running' state. Returns job UUID."""
+    """
+    Insert a vision_job row in 'running' state. Returns job UUID.
+
+    If a job already exists for this video_source with status 'running' or
+    'pending' (e.g. a previous interrupted run or concurrent container),
+    returns its existing id instead of creating a duplicate.
+    """
     client = _get_client()
+
+    # Check for an existing non-done job for this source first
+    existing = (
+        client.table("vision_jobs")
+        .select("id,status")
+        .eq("video_source", video_source)
+        .neq("status", "done")
+        .neq("status", "error")
+        .limit(1)
+        .execute()
+        .data
+    )
+    if existing:
+        return existing[0]["id"]
+
     row = {
         "video_source": video_source,
         "source_type":  source_type,
