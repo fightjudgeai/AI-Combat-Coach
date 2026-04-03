@@ -178,7 +178,14 @@ class UFCFreeFightScraper:
 
         # Download
         ydl_opts = {
-            "format":     "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            # Prefer H.264 (avc) — OpenCV can decode it without ffmpeg fallback.
+            # Fall back to VP9 or any mp4 if no AVC stream is available.
+            "format": (
+                "bestvideo[vcodec^=avc][height<=1080][ext=mp4]+bestaudio[ext=m4a]"
+                "/bestvideo[vcodec^=avc][height<=1080]+bestaudio"
+                "/bestvideo[vcodec^=vp9][height<=1080]+bestaudio"
+                "/best[ext=mp4]/best"
+            ),
             "outtmpl":    str(fight_dir / "full_fight.%(ext)s"),
             "quiet":      self._quiet,
             "no_warnings": True,
