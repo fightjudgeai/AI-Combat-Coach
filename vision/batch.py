@@ -59,7 +59,6 @@ def run_batch(
     supabase_key: Optional[str] = None,
 ) -> None:
     from .footage import scan_footage
-    from .pipeline import run as run_pipeline
 
     # Optionally skip already-done jobs
     done_sources: Set[str] = set()
@@ -112,6 +111,7 @@ def run_batch(
                 item.fight_slug, fighter_id, corner,
             )
             try:
+                from .pipeline import run as run_pipeline
                 run_pipeline(
                     source      = source_str,
                     fighter_id  = fighter_id,

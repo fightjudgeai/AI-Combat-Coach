@@ -80,7 +80,11 @@ def scan_footage(root: Path) -> Iterator[FightFootageItem]:
     Yields one FightFootageItem per fight directory found.
     """
     if not root.exists():
-        raise FileNotFoundError(f"Footage root not found: {root}")
+        import logging
+        logging.getLogger(__name__).warning(
+            "Footage root not found: %s — nothing to scan", root
+        )
+        return
 
     for event_dir in sorted(root.iterdir()):
         if not event_dir.is_dir():

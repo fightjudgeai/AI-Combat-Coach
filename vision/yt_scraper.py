@@ -31,14 +31,19 @@ log = logging.getLogger(__name__)
 # UFC YouTube constants
 # ---------------------------------------------------------------------------
 
-UFC_CHANNEL_URL   = "https://www.youtube.com/@UFC/videos"
-UFC_CHANNEL_ID    = "UCvgfXK4nTYKudb0rFR6noLA"
+# yt-dlp search query — reliably returns free fight full videos from UFC channel
+_SEARCH_QUERY_TEMPLATE = "ytsearch{n}:UFC free fight full fight"
 
-# yt-dlp search filter — match "Free Fight" in title
-FREE_FIGHT_FILTER = "free fight"
+# Known UFC free fights playlists (fallback if search fails)
+_UFC_FREE_FIGHTS_PLAYLISTS = [
+    "https://www.youtube.com/playlist?list=PLlVlyGVtvuVlNfIHkdcD7DOfGewsS6mGb",
+]
 
-# Max results from channel scan (yt-dlp will paginate)
-_DEFAULT_MAX = 100
+# Min duration in seconds to filter out clips (full fights are usually 10+ min)
+_MIN_DURATION_SECS = 600   # 10 min
+
+# Max results from channel scan
+_DEFAULT_MAX = 20
 
 
 # ---------------------------------------------------------------------------
@@ -62,41 +67,81 @@ class UFCFreeFightScraper:
 
     def list_free_fights(self, max_results: int = _DEFAULT_MAX) -> List[Dict[str, Any]]:
         """
-        Return a list of dicts: {url, title, duration, upload_date, description}
-        filtered to videos with 'free fight' in the title.
+        Return a list of dicts: {url, title, duration, upload_date}
+        Uses yt-dlp YouTube search for "UFC free fight full fight".
+        Falls back to known UFC free fights playlists.
         """
-        ydl_opts = {
-            "quiet":          self._quiet,
-            "no_warnings":    True,
-            "extract_flat":   "in_playlist",
-            "playlistend":    max_results * 3,   # over-fetch since we filter
-            "ignoreerrors":   True,
-        }
+        results = self._search_youtube(max_results)
+        if not results:
+            log.info("Search returned nothing — trying known playlists")
+            results = self._scrape_playlists(max_results)
+        log.info("Found %d free fight videos", len(results))
+        return results
 
+    def _search_youtube(self, max_results: int) -> List[Dict[str, Any]]:
+        """Use ytsearchN: query to find UFC free fight videos."""
+        search_url = _SEARCH_QUERY_TEMPLATE.format(n=max_results * 3)
+        ydl_opts = {
+            "quiet":        self._quiet,
+            "no_warnings":  True,
+            "extract_flat": True,
+            "ignoreerrors": True,
+        }
         results = []
         with self._yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(UFC_CHANNEL_URL, download=False)
-            if not info or "entries" not in info:
-                log.warning("No entries found from UFC channel")
+            info = ydl.extract_info(search_url, download=False)
+            if not info:
                 return []
-
-            for entry in info.get("entries") or []:
+            for entry in (info.get("entries") or []):
                 if entry is None:
                     continue
                 title = (entry.get("title") or "").lower()
-                if FREE_FIGHT_FILTER not in title:
+                # Must contain "free fight" or "full fight" to qualify
+                if "free fight" not in title and "full fight" not in title:
+                    continue
+                duration = entry.get("duration") or 0
+                if duration and duration < _MIN_DURATION_SECS:
                     continue
                 results.append({
                     "url":         f"https://www.youtube.com/watch?v={entry['id']}",
                     "video_id":    entry["id"],
                     "title":       entry.get("title", ""),
-                    "duration":    entry.get("duration"),
+                    "duration":    duration,
                     "upload_date": entry.get("upload_date"),
                 })
                 if len(results) >= max_results:
                     break
+        return results
 
-        log.info("Found %d free fight videos", len(results))
+    def _scrape_playlists(self, max_results: int) -> List[Dict[str, Any]]:
+        """Scrape known UFC free-fight playlists as a fallback."""
+        ydl_opts = {
+            "quiet":          self._quiet,
+            "no_warnings":    True,
+            "extract_flat":   "in_playlist",
+            "playlistend":    max_results,
+            "ignoreerrors":   True,
+        }
+        results = []
+        with self._yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            for pl_url in _UFC_FREE_FIGHTS_PLAYLISTS:
+                info = ydl.extract_info(pl_url, download=False)
+                if not info or "entries" not in info:
+                    continue
+                for entry in (info.get("entries") or []):
+                    if entry is None:
+                        continue
+                    results.append({
+                        "url":         f"https://www.youtube.com/watch?v={entry['id']}",
+                        "video_id":    entry["id"],
+                        "title":       entry.get("title", ""),
+                        "duration":    entry.get("duration"),
+                        "upload_date": entry.get("upload_date"),
+                    })
+                    if len(results) >= max_results:
+                        break
+                if len(results) >= max_results:
+                    break
         return results
 
     # ------------------------------------------------------------------
