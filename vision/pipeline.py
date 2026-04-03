@@ -32,10 +32,16 @@ from typing import Dict, Optional
 import cv2
 
 from .attribute import FighterAccumulator
+from .aggression import build_summary
+from .classifier import FightClassifier, FrameState
 from .detect import FighterObservation, PoseDetector
 from .extract import iter_frames, video_duration
+from .events import FightEvent
 from .ingest import detect_source_type, resolve_video
-from .writer import complete_job, create_job, fail_job, update_fighter_attributes
+from .writer import (
+    complete_job, create_job, fail_job,
+    insert_events, update_fighter_attributes, upsert_summary,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -115,6 +121,9 @@ def run(
         # ------------------------------------------------------------------
         detector = PoseDetector(device=device)
         accumulator = FighterAccumulator(target_track_id=-1)  # target assigned first frame
+        classifier  = FightClassifier(sample_interval=interval)
+        all_events: List[FightEvent] = []
+        cx_snapshots: List[tuple[float, float]] = []
         first_frame_seen: Dict[int, float] = {}
         target_track_id: Optional[int] = None
         frames_sampled = 0
@@ -150,26 +159,71 @@ def run(
             # Only accumulate frames where our target is visible
             if target_obs.track_id == target_track_id:
                 accumulator.ingest(ts, target_obs, opp_obs)
+                cx_snapshots.append((ts, target_obs.cx))
+
+                # Classifier: build FrameState and detect events
+                fs = FrameState(
+                    ts=ts, obs=target_obs, opp=opp_obs,
+                    frame_w=frame_w, frame_h=frame_h,
+                )
+                frame_events = classifier.ingest(fs)
+                all_events.extend(frame_events)
 
             if frames_sampled % 100 == 0:
                 log.info("Processed %d frames | t=%.1fs", frames_sampled, ts)
 
+        # Flush any pending position state
+        all_events.extend(classifier.flush(duration))
+
         # ------------------------------------------------------------------
-        # 4. Compute attributes
+        # 4. Compute style attributes + event summary
         # ------------------------------------------------------------------
-        attrs = accumulator.compute()
+        attrs   = accumulator.compute()
+        summary = build_summary(all_events, cx_snapshots, duration, interval)
         log.info("Attributes computed: %s", attrs)
+        log.info("Events detected: %d total", len(all_events))
 
         # ------------------------------------------------------------------
         # 5. Write to DB
         # ------------------------------------------------------------------
-        complete_job(job_id, frames_sampled, duration, attrs)
+        raw_out = {**attrs, "event_count": len(all_events), "summary": summary}
+        complete_job(job_id, frames_sampled, duration, raw_out)
 
-        if fighter_id and attrs:
-            update_fighter_attributes(fighter_id, attrs)
+        if fighter_id:
+            if all_events:
+                insert_events(job_id, fighter_id, all_events)
+                upsert_summary(job_id, fighter_id, summary)
+            if attrs:
+                # Backfill grappling_first + finish_urgency from event data
+                grappling_total = (
+                    summary["takedowns_landed"] +
+                    summary["submission_attempts"] +
+                    summary["time_in_half_guard"] +
+                    summary["time_in_full_guard"]
+                )
+                striking_total = (
+                    summary["punches_attempted"] +
+                    summary["kicks_attempted"]
+                )
+                attrs["grappling_first"] = grappling_total > striking_total
+                attrs["finish_urgency"]  = round(
+                    min(
+                        (summary["knockdowns_scored"] * 15 +
+                         summary["submission_attempts"] * 10 +
+                         summary["takedowns_landed"] * 5)
+                        / max(duration / 60, 1) / 3, 100
+                    ), 2
+                )
+                update_fighter_attributes(fighter_id, attrs)
             log.info("Fighter %s updated", fighter_id)
 
-        return {"job_id": job_id, "frames_sampled": frames_sampled, "attrs": attrs}
+        return {
+            "job_id":         job_id,
+            "frames_sampled": frames_sampled,
+            "events":         len(all_events),
+            "attrs":          attrs,
+            "summary":        summary,
+        }
 
     except Exception as exc:
         log.exception("Pipeline failed: %s", exc)

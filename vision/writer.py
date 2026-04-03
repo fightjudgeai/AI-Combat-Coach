@@ -1,15 +1,15 @@
 """
 vision/writer.py
-Write computed style attributes back to the fighters table
-and record the vision_job row in Supabase.
+Write computed style attributes, event log, and summary to Supabase.
 """
 from __future__ import annotations
 
 import os
-import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from supabase import create_client, Client
+
+from .events import FightEvent
 
 
 def _get_client() -> Client:
@@ -99,3 +99,35 @@ def update_fighter_attributes(fighter_id: str, attrs: Dict[str, Any]) -> None:
 
     if patch:
         client.table("fighters").update(patch).eq("id", fighter_id).execute()
+
+
+# ---------------------------------------------------------------------------
+# Event log + summary
+# ---------------------------------------------------------------------------
+
+_BATCH_SIZE = 500   # max rows per Supabase insert call
+
+
+def insert_events(
+    job_id: str,
+    fighter_id: Optional[str],
+    events: List[FightEvent],
+) -> None:
+    """Batch-insert all FightEvent rows into fight_events."""
+    if not events:
+        return
+    client = _get_client()
+    rows = [e.to_db_row(job_id, fighter_id) for e in events]
+    for i in range(0, len(rows), _BATCH_SIZE):
+        client.table("fight_events").insert(rows[i:i + _BATCH_SIZE]).execute()
+
+
+def upsert_summary(
+    job_id: str,
+    fighter_id: Optional[str],
+    summary: Dict[str, Any],
+) -> None:
+    """Upsert a fight_event_summary row (unique on job_id + fighter_id)."""
+    client = _get_client()
+    row = {"job_id": job_id, "fighter_id": fighter_id, **summary}
+    client.table("fight_event_summary").upsert(row, on_conflict="job_id,fighter_id").execute()

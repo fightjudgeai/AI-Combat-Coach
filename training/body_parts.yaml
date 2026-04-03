@@ -1,0 +1,40 @@
+# ============================================================================
+# training/body_parts.yaml
+# YOLO dataset config for body-part bounding box detection.
+# Used to train a custom YOLOv8 detector on fight footage.
+#
+# Label annotations should use the ANNOTATION_GUIDE in vision/events.py.
+# Recommended tool: Roboflow (roboflow.com) or Label Studio.
+# ============================================================================
+
+path: ./data/body_parts          # dataset root (relative to this file)
+train: images/train
+val:   images/val
+test:  images/test                # optional
+
+# Number of classes
+nc: 8
+
+# Class index → name (mirrors BODY_PART_CLASSES in vision/events.py)
+names:
+  0: fighter
+  1: head
+  2: glove
+  3: body_torso
+  4: elbow
+  5: knee
+  6: foot
+  7: shin
+
+# ============================================================================
+# Recommended training command (adjust epochs/batch for your GPU)
+# ============================================================================
+# yolo detect train \
+#   model=yolov8m.pt \
+#   data=training/body_parts.yaml \
+#   epochs=100 \
+#   imgsz=640 \
+#   batch=16 \
+#   device=0 \
+#   project=runs/body_parts \
+#   name=v1

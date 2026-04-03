@@ -1,0 +1,53 @@
+# ============================================================================
+# training/actions.yaml
+# YOLO classification dataset config for per-fighter-crop action recognition.
+# Each crop is a fighter bounding box extracted from a frame.
+#
+# Mirrors ACTION_CLASSES in vision/events.py.
+# ============================================================================
+
+path: ./data/actions             # dataset root
+train: train
+val:   val
+test:  test                      # optional
+
+# Number of classes
+nc: 21
+
+# Class index → name (mirrors ACTION_CLASSES in vision/events.py)
+names:
+  0:  standing
+  1:  punch_throwing
+  2:  kick_throwing
+  3:  elbow_throwing
+  4:  knee_throwing
+  5:  clinch
+  6:  takedown_attempt
+  7:  takedown_defense
+  8:  half_guard_top
+  9:  half_guard_bottom
+  10: full_guard_top
+  11: full_guard_bottom
+  12: side_control_top
+  13: side_control_bottom
+  14: back_control_top
+  15: back_control_bottom
+  16: submission_attempt
+  17: cage_grappling
+  18: sweep
+  19: reversal
+  20: knockdown
+
+# ============================================================================
+# Recommended training command
+# Fine-tune YOLOv8 classification on fighter crops (80×80 or 224×224)
+# ============================================================================
+# yolo classify train \
+#   model=yolov8m-cls.pt \
+#   data=training/actions.yaml \
+#   epochs=80 \
+#   imgsz=224 \
+#   batch=32 \
+#   device=0 \
+#   project=runs/actions \
+#   name=v1
