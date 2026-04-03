@@ -135,6 +135,49 @@ class FrameState:
             return None
         return kp.raw_xy[0, 0] / self.frame_w, kp.raw_xy[0, 1] / self.frame_h
 
+    # ------------------------------------------------------------------
+    # Geometric helpers
+    # ------------------------------------------------------------------
+
+    def is_grounded(self) -> bool:
+        """True when the fighter's hips are in the lower portion of the frame."""
+        kp = self.obs.keypoints
+        if kp is None:
+            return False
+        if kp.confidence[11] > 0.3:
+            return kp.left_hip[1] / self.frame_h > _GROUND_HIP_THRESHOLD
+        if kp.confidence[12] > 0.3:
+            return kp.right_hip[1] / self.frame_h > _GROUND_HIP_THRESHOLD
+        # Fallback: use tracked bbox centre
+        return self.obs.cy > _GROUND_HIP_THRESHOLD
+
+    def is_floored(self) -> bool:
+        """True when the fighter is flat on the canvas (shoulders very low)."""
+        kp = self.obs.keypoints
+        if kp is None:
+            return False
+        if kp.confidence[5] > 0.3:
+            return kp.left_shoulder[1] / self.frame_h > _KD_SHOULDER_THRESHOLD
+        if kp.confidence[6] > 0.3:
+            return kp.right_shoulder[1] / self.frame_h > _KD_SHOULDER_THRESHOLD
+        return False
+
+    def near_cage_left(self) -> bool:
+        """True when the fighter is hugging the left wall of the octagon."""
+        return self.obs.cx < _CAGE_EDGE_THRESHOLD
+
+    def near_cage_right(self) -> bool:
+        """True when the fighter is hugging the right wall of the octagon."""
+        return self.obs.cx > (1.0 - _CAGE_EDGE_THRESHOLD)
+
+    def dist_to_opp(self) -> Optional[float]:
+        """Normalised Euclidean distance from target bbox centre to opponent."""
+        if self.opp is None:
+            return None
+        dx = self.obs.cx - self.opp.cx
+        dy = self.obs.cy - self.opp.cy
+        return math.sqrt(dx * dx + dy * dy)
+
 
 # ---------------------------------------------------------------------------
 # Utility

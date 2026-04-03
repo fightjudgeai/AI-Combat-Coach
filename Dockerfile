@@ -15,9 +15,20 @@ WORKDIR /app
 
 # ── Python deps ──────────────────────────────────────────────────────────────
 COPY requirements.txt .
-# Install CPU-only torch first so it doesn't pull the huge CUDA wheel by default
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
- && pip install --no-cache-dir -r requirements.txt
+# Install CPU-only torch + torchvision from the pytorch whl index (matching ABI)
+# Pinned to 2.6.0 — latest with a published +cpu torchvision wheel
+# then install the rest; --extra-index-url lets pip find other packages from PyPI
+RUN pip install --no-cache-dir \
+        "torch==2.6.0+cpu" \
+        "torchvision==0.21.0+cpu" \
+        --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+
+# ── pre-download YOLO model so containers start instantly ────────────────────
+RUN python - <<'EOF'
+from ultralytics import YOLO
+YOLO("yolov8n-pose.pt")   # downloads to /root/.config/Ultralytics cache
+EOF
 
 # ── application code ─────────────────────────────────────────────────────────
 COPY vision/ vision/

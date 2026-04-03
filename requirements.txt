@@ -1,9 +1,13 @@
 # AI-Combat-Coach vision pipeline dependencies
 
 # Core CV
+# torch + torchvision are installed separately in the Dockerfile from the
+# pytorch CPU whl index to ensure the +cpu ABI builds are used.
+# Do NOT add torch/torchvision here — ultralytics will honour what's already installed.
 ultralytics>=8.2.0          # YOLOv8-pose + BoT-SORT tracker
 opencv-python-headless>=4.9  # frame extraction, no GUI needed
 numpy>=1.26
+lap>=0.5.12                  # BoT-SORT / ByteTrack lap assignment (ultralytics tracker dep)
 
 # Video sources
 yt-dlp>=2024.1.0             # YouTube download
