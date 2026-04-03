@@ -11,8 +11,8 @@ Usage:
     # Dry run: show what would be processed
     python -m vision.batch --footage-root fight_footage --dry-run
 
-    # Process all pending fights
-    python -m vision.batch --footage-root fight_footage --device cuda --interval 2.0
+    # Resolve fighter IDs from DB, then process all pending fights
+    python -m vision.batch --footage-root fight_footage --resolve --device cuda --interval 2.0
 
     # Process only benchmark fights
     python -m vision.batch --footage-root fight_footage --benchmark-only --device cuda
@@ -55,10 +55,22 @@ def run_batch(
     interval: float = 2.0,
     benchmark_only: bool = False,
     dry_run: bool = False,
+    resolve: bool = False,
     supabase_url: Optional[str] = None,
     supabase_key: Optional[str] = None,
 ) -> None:
     from .footage import scan_footage
+
+    # Optional: auto-resolve fighter_ids from DB before scanning
+    if resolve:
+        if not supabase_url or not supabase_key:
+            log.error("--resolve requires SUPABASE_URL and SUPABASE_SERVICE_KEY")
+        else:
+            from .resolve_fighters import FighterResolver, resolve_footage_root
+            log.info("Resolving fighter IDs against DB ...")
+            resolver = FighterResolver(supabase_url, supabase_key)
+            r, a, u = resolve_footage_root(footage_root, resolver, dry_run=dry_run)
+            log.info("Resolve complete — resolved=%d already_set=%d unresolved=%d", r, a, u)
 
     # Optionally skip already-done jobs
     done_sources: Set[str] = set()
@@ -148,6 +160,8 @@ def _parse_args() -> argparse.Namespace:
                    help="Torch device: cpu | cuda | mps (default: cpu)")
     p.add_argument("--interval",     type=float, default=2.0,
                    help="Frame sampling interval in seconds (default: 2.0)")
+    p.add_argument("--resolve",       action="store_true",
+                   help="Auto-resolve fighter_ids from DB before processing")
     p.add_argument("--benchmark-only", action="store_true",
                    help="Only process fights where is_benchmark=true")
     p.add_argument("--dry-run",      action="store_true",
@@ -175,6 +189,7 @@ if __name__ == "__main__":
         interval        = args.interval,
         benchmark_only  = args.benchmark_only,
         dry_run         = args.dry_run,
+        resolve         = args.resolve,
         supabase_url    = supa_url,
         supabase_key    = supa_key,
     )
