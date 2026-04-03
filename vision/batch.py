@@ -56,6 +56,7 @@ def run_batch(
     benchmark_only: bool = False,
     dry_run: bool = False,
     resolve: bool = False,
+    allow_null_ids: bool = False,
     supabase_url: Optional[str] = None,
     supabase_key: Optional[str] = None,
 ) -> None:
@@ -97,9 +98,14 @@ def run_batch(
             continue
 
         if not item.fighter_ids or all(fid is None for fid in item.fighter_ids):
-            log.warning("No fighter_ids in metadata for %s — skipping", item.fight_slug)
-            skipped += 1
-            continue
+            if allow_null_ids:
+                log.info("No fighter_ids for %s — running with null IDs", item.fight_slug)
+                item.fighter_ids  = [None]
+                item.corner       = [item.corner[0] if item.corner else "red"]
+            else:
+                log.warning("No fighter_ids in metadata for %s — skipping", item.fight_slug)
+                skipped += 1
+                continue
 
         for idx, fighter_id in enumerate(item.fighter_ids):
             if fighter_id is None:
@@ -160,6 +166,8 @@ def _parse_args() -> argparse.Namespace:
                    help="Torch device: cpu | cuda | mps (default: cpu)")
     p.add_argument("--interval",     type=float, default=2.0,
                    help="Frame sampling interval in seconds (default: 2.0)")
+    p.add_argument("--allow-null-ids", action="store_true",
+                   help="Run pipeline even when fighter_ids are unresolved (benchmark/training mode)")
     p.add_argument("--resolve",       action="store_true",
                    help="Auto-resolve fighter_ids from DB before processing")
     p.add_argument("--benchmark-only", action="store_true",
@@ -190,6 +198,7 @@ if __name__ == "__main__":
         benchmark_only  = args.benchmark_only,
         dry_run         = args.dry_run,
         resolve         = args.resolve,
+        allow_null_ids  = args.allow_null_ids,
         supabase_url    = supa_url,
         supabase_key    = supa_key,
     )

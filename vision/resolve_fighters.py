@@ -80,20 +80,22 @@ class FighterResolver:
             return None
 
     def _lookup_scraped(self, name: str) -> Optional[str]:
-        """Check the scraped_fighters table (name)."""
-        try:
-            rows = (
-                self._sb.table("scraped_fighters")
-                .select("id, name")
-                .ilike("name", f"%{name}%")
-                .limit(1)
-                .execute()
-                .data
-            )
-            return rows[0]["id"] if rows else None
-        except Exception as exc:
-            log.debug("scraped_fighters lookup error for '%s': %s", name, exc)
-            return None
+        """Check the scraped/roster fighter tables as fallback."""
+        for table, col in [("scraped_fighters", "name"), ("locker_room_fighters", "name")]:
+            try:
+                rows = (
+                    self._sb.table(table)
+                    .select("id, name")
+                    .ilike(col, f"%{name}%")
+                    .limit(1)
+                    .execute()
+                    .data
+                )
+                if rows:
+                    return rows[0]["id"]
+            except Exception as exc:
+                log.debug("%s lookup error for '%s': %s", table, name, exc)
+        return None
 
 
 # ---------------------------------------------------------------------------

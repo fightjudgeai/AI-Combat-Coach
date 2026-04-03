@@ -48,7 +48,7 @@ BEGIN
   SELECT jsonb_build_object(
     'source',     'verified',
     'name',       f.full_name,
-    'weight_class', f.weight_class,
+    'weight_class', f.primary_weight_class,
     'fps', fps.total_fps_score,
     'fps_components', jsonb_build_object(
       'win_quality',               fps.win_quality,
@@ -66,12 +66,12 @@ BEGIN
       'wins',        f.record_wins,
       'losses',      f.record_losses,
       'draws',       f.record_draws,
-      'no_contests', f.record_no_contests,
+      'no_contests', f.record_nc,
       'finish_rate', fps.finish_rate,
       'ko_rate',     fps.ko_rate,
       'sub_rate',    fps.sub_rate
     ),
-    'style',       f.style_label,
+    'style',       f.primary_style,
     'style_tags',  f.style_tags,
     'stance',      f.stance,
     'tendencies', jsonb_build_object(
