@@ -12,31 +12,36 @@ val:   val
 test:  test                      # optional
 
 # Number of classes
-nc: 21
+nc: 26
 
 # Class index → name (mirrors ACTION_CLASSES in vision/events.py)
 names:
   0:  standing
-  1:  punch_throwing
-  2:  kick_throwing
-  3:  elbow_throwing
-  4:  knee_throwing
-  5:  clinch
-  6:  takedown_attempt
-  7:  takedown_defense
-  8:  half_guard_top
-  9:  half_guard_bottom
-  10: full_guard_top
-  11: full_guard_bottom
-  12: side_control_top
-  13: side_control_bottom
-  14: back_control_top
-  15: back_control_bottom
-  16: submission_attempt
-  17: cage_grappling
-  18: sweep
-  19: reversal
-  20: knockdown
+  1:  jab_throwing
+  2:  cross_throwing
+  3:  hook_throwing
+  4:  uppercut_throwing
+  5:  kick_throwing
+  6:  elbow_throwing
+  7:  knee_throwing
+  8:  ground_strike
+  9:  clinch
+  10: takedown_attempt
+  11: takedown_defense
+  12: half_guard_top
+  13: half_guard_bottom
+  14: full_guard_top
+  15: full_guard_bottom
+  16: side_control_top
+  17: side_control_bottom
+  18: back_control_top
+  19: back_control_bottom
+  20: submission_attempt
+  21: cage_grappling
+  22: sweep
+  23: reversal
+  24: knockdown
+  25: ko
 
 # ============================================================================
 # Recommended training command

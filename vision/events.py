@@ -20,8 +20,10 @@ class EventType(str, Enum):
     KICK           = "kick"
     ELBOW_STRIKE   = "elbow_strike"
     KNEE_STRIKE    = "knee_strike"
+    GROUND_STRIKE  = "ground_strike"      # either fighter grounded during strike
     # Finishing
     KNOCKDOWN      = "knockdown"
+    KO             = "ko"                 # fighter doesn't recover within window
     # Takedown game
     TAKEDOWN       = "takedown"
     TAKEDOWN_STUFFED = "takedown_stuffed"
@@ -39,6 +41,13 @@ class EventType(str, Enum):
     # Cage
     CAGE_CONTROL_START = "cage_control_start"
     CAGE_CONTROL_END   = "cage_control_end"
+
+
+class PunchSubtype(str, Enum):
+    JAB       = "jab"        # lead hand, straight, horizontal
+    CROSS     = "cross"      # rear hand, straight, horizontal
+    HOOK      = "hook"       # lateral arc, elbow bent ~90°
+    UPPERCUT  = "uppercut"   # upward trajectory, tight arc
 
 
 class Limb(str, Enum):
@@ -95,26 +104,31 @@ BODY_PART_CLASSES: list[str] = [
 # Action / position classification labels (for a per-crop classifier head)
 ACTION_CLASSES: list[str] = [
     "standing",             # 0
-    "punch_throwing",       # 1
-    "kick_throwing",        # 2
-    "elbow_throwing",       # 3
-    "knee_throwing",        # 4
-    "clinch",               # 5
-    "takedown_attempt",     # 6
-    "takedown_defense",     # 7
-    "half_guard_top",       # 8
-    "half_guard_bottom",    # 9
-    "full_guard_top",       # 10
-    "full_guard_bottom",    # 11
-    "side_control_top",     # 12
-    "side_control_bottom",  # 13
-    "back_control_top",     # 14
-    "back_control_bottom",  # 15
-    "submission_attempt",   # 16
-    "cage_grappling",       # 17
-    "sweep",                # 18
-    "reversal",             # 19
-    "knockdown",            # 20
+    "jab_throwing",         # 1  — lead hand straight
+    "cross_throwing",       # 2  — rear hand straight
+    "hook_throwing",        # 3  — lateral arc
+    "uppercut_throwing",    # 4  — upward arc
+    "kick_throwing",        # 5
+    "elbow_throwing",       # 6
+    "knee_throwing",        # 7
+    "ground_strike",        # 8  — striking a grounded opponent
+    "clinch",               # 9
+    "takedown_attempt",     # 10
+    "takedown_defense",     # 11
+    "half_guard_top",       # 12
+    "half_guard_bottom",    # 13
+    "full_guard_top",       # 14
+    "full_guard_bottom",    # 15
+    "side_control_top",     # 16
+    "side_control_bottom",  # 17
+    "back_control_top",     # 18
+    "back_control_bottom",  # 19
+    "submission_attempt",   # 20
+    "cage_grappling",       # 21
+    "sweep",                # 22
+    "reversal",             # 23
+    "knockdown",            # 24
+    "ko",                   # 25  — fighter does not rise
 ]
 
 # Roboflow / Label Studio annotation guide mapping
@@ -147,6 +161,12 @@ ANNOTATION_GUIDE: dict[str, str] = {
     "sweep":                "Bottom fighter reverses to top using leverage.",
     "reversal":             "Either fighter flips position (general).",
     "knockdown":            "Fighter touches canvas from a strike (not a slip).",
+    "ko":                   "Fighter knocked out — stays on canvas, fight stopped.",
+    "jab_throwing":         "Lead hand extends straight forward at speed; arm nearly fully extended.",
+    "cross_throwing":       "Rear hand straight punch; shoulder rotation clearly visible.",
+    "hook_throwing":        "Elbow bent ~90°, arm sweeps laterally toward opponent's head/body.",
+    "uppercut_throwing":    "Fist rises upward with bent elbow, typically targeting chin or body.",
+    "ground_strike":        "Striker throws punches/elbows while opponent is grounded (GnP).",
 }
 
 
@@ -156,25 +176,29 @@ ANNOTATION_GUIDE: dict[str, str] = {
 
 @dataclasses.dataclass
 class FightEvent:
-    timestamp_secs: float
-    event_type:     EventType
-    confidence:     float = 0.0
-    limb:           Optional[Limb]        = None
-    target_zone:    Optional[TargetZone]  = None
-    outcome:        Optional[Outcome]     = None
-    position:       Optional[Position]    = None
-    round_num:      Optional[int]         = None
+    timestamp_secs:  float
+    event_type:      EventType
+    confidence:      float = 0.0
+    limb:            Optional[Limb]         = None
+    target_zone:     Optional[TargetZone]   = None
+    outcome:         Optional[Outcome]      = None
+    position:        Optional[Position]     = None
+    punch_subtype:   Optional[PunchSubtype] = None
+    is_ground_strike: bool                  = False
+    round_num:       Optional[int]          = None
 
     def to_db_row(self, job_id: str, fighter_id: Optional[str] = None) -> dict:
         return {
-            "job_id":         job_id,
-            "fighter_id":     fighter_id,
-            "timestamp_secs": self.timestamp_secs,
-            "round_num":      self.round_num,
-            "event_type":     self.event_type.value,
-            "limb":           self.limb.value if self.limb else None,
-            "target_zone":    self.target_zone.value if self.target_zone else None,
-            "outcome":        self.outcome.value if self.outcome else None,
-            "position":       self.position.value if self.position else None,
-            "confidence":     self.confidence,
+            "job_id":           job_id,
+            "fighter_id":       fighter_id,
+            "timestamp_secs":   self.timestamp_secs,
+            "round_num":        self.round_num,
+            "event_type":       self.event_type.value,
+            "limb":             self.limb.value if self.limb else None,
+            "target_zone":      self.target_zone.value if self.target_zone else None,
+            "outcome":          self.outcome.value if self.outcome else None,
+            "position":         self.position.value if self.position else None,
+            "punch_subtype":    self.punch_subtype.value if self.punch_subtype else None,
+            "is_ground_strike": self.is_ground_strike,
+            "confidence":       self.confidence,
         }

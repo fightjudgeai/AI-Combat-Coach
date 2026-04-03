@@ -75,7 +75,7 @@ def compute_pressure_aggression(
     strike_types = {EventType.PUNCH, EventType.KICK, EventType.ELBOW_STRIKE, EventType.KNEE_STRIKE}
     all_strikes  = [e for e in events if e.event_type in strike_types]
     landed       = [e for e in all_strikes if e.outcome == Outcome.LANDED]
-    kd_td        = [e for e in events if e.event_type in (EventType.KNOCKDOWN, EventType.TAKEDOWN)]
+    kd_td        = [e for e in events if e.event_type in (EventType.KNOCKDOWN, EventType.KO, EventType.TAKEDOWN)]
 
     strikes_per_min  = len(all_strikes) / duration_mins
     volume_score     = min(strikes_per_min / 20.0, 1.0)   # 20 strikes/min = 100%
@@ -115,8 +115,13 @@ def build_summary(
         events, frame_snapshots_cx, video_duration_secs
     )
 
-    def count(etype: EventType, outcome: Outcome | None = None,
-              target: "TargetZone | None" = None) -> int:
+    def count(
+        etype: EventType,
+        outcome: "Outcome | None" = None,
+        target: "TargetZone | None" = None,
+        punch_subtype: "PunchSubtype | None" = None,
+        is_ground: bool | None = None,
+    ) -> int:
         from .events import TargetZone
         total = 0
         for e in events:
@@ -126,10 +131,14 @@ def build_summary(
                 continue
             if target is not None and e.target_zone != target:
                 continue
+            if punch_subtype is not None and e.punch_subtype != punch_subtype:
+                continue
+            if is_ground is not None and e.is_ground_strike != is_ground:
+                continue
             total += 1
         return total
 
-    from .events import TargetZone, Outcome as O
+    from .events import TargetZone, Outcome as O, PunchSubtype
 
     # Position time: count position_change events, compute duration between them
     pos_time = _compute_position_times(events, video_duration_secs, sample_interval)
@@ -149,7 +158,18 @@ def build_summary(
         "kicks_missed":             count(EventType.KICK,         O.MISSED),
         "elbows_missed":            count(EventType.ELBOW_STRIKE,  O.MISSED),
         "knees_missed":             count(EventType.KNEE_STRIKE,   O.MISSED),
-        "knockdowns_scored":        count(EventType.KNOCKDOWN),
+        "jabs_attempted":            count(EventType.PUNCH, punch_subtype=PunchSubtype.JAB),
+        "jabs_landed":               count(EventType.PUNCH, O.LANDED,  punch_subtype=PunchSubtype.JAB),
+        "crosses_attempted":         count(EventType.PUNCH, punch_subtype=PunchSubtype.CROSS),
+        "crosses_landed":            count(EventType.PUNCH, O.LANDED,  punch_subtype=PunchSubtype.CROSS),
+        "hooks_attempted":           count(EventType.PUNCH, punch_subtype=PunchSubtype.HOOK),
+        "hooks_landed":              count(EventType.PUNCH, O.LANDED,  punch_subtype=PunchSubtype.HOOK),
+        "uppercuts_attempted":       count(EventType.PUNCH, punch_subtype=PunchSubtype.UPPERCUT),
+        "uppercuts_landed":          count(EventType.PUNCH, O.LANDED,  punch_subtype=PunchSubtype.UPPERCUT),
+        "ground_strikes_attempted":  count(EventType.GROUND_STRIKE),
+        "ground_strikes_landed":     count(EventType.GROUND_STRIKE, O.LANDED),
+        "ko_scored":                 count(EventType.KO),
+        "knockdowns_scored":         count(EventType.KNOCKDOWN),
         "takedowns_landed":         count(EventType.TAKEDOWN),
         "takedowns_stuffed":        count(EventType.TAKEDOWN_STUFFED),
         "clinch_entries":           count(EventType.CLINCH_ENTRY),

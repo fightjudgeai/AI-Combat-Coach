@@ -20,7 +20,7 @@ import numpy as np
 
 from .detect import FighterObservation, Keypoints
 from .events import (
-    EventType, FightEvent, Limb, Outcome, Position, TargetZone,
+    EventType, FightEvent, Limb, Outcome, Position, PunchSubtype, TargetZone,
 )
 
 # ---------------------------------------------------------------------------
@@ -42,6 +42,14 @@ _GRAPPLE_PROXIMITY           = 0.14   # bodies this close + one grounded → gra
 _MIN_EVENT_SEPARATION        = 0.5    # seconds — suppress duplicate events within window
 _CONFIDENCE_STRIKE_RULE      = 0.55
 _CONFIDENCE_POSITION_RULE    = 0.60
+
+# Punch subtype geometry thresholds
+_HOOK_LATERAL_RATIO          = 0.55   # lateral dx / total displacement → hook
+_UPPERCUT_UPWARD_RATIO       = 0.45   # upward (-dy) / total displacement → uppercut
+_LEAD_HAND_TOLERANCE         = 0.05   # cx offset tolerance for lead/rear hand determination
+
+# KO detection: frames fighter stays floored before we emit KO vs knockdown
+_KO_FLOOR_FRAMES             = 3      # at sample_interval=2s this is ~6 s of being down
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +170,8 @@ class FightClassifier:
         self._position   = Position.STANDING
         self._pos_start  = 0.0
         self._last_events: dict[str, float] = {}   # event_type → last_ts
+        self._floored_frames = 0   # consecutive frames fighter is floored (KO detector)
+        self._kd_emitted     = False  # whether knockdown event already emitted this sequence
 
     # ------------------------------------------------------------------
     # Public API
@@ -214,21 +224,30 @@ class FightClassifier:
 
         prev = self._history[-1]
         dt = fs.ts - prev.ts
+        striker_grounded = fs.is_grounded()
+        opp_grounded     = False
+        if fs.opp and fs.opp.keypoints:
+            opp_grounded = fs.opp.keypoints.left_hip[1] / fs.frame_h > _GROUND_HIP_THRESHOLD
 
         # --- Punch (wrist velocity toward opponent) ---
         for wrist_fn in (FrameState.wrist_l, FrameState.wrist_r):
             w_prev = wrist_fn(prev)
             w_curr = wrist_fn(fs)
             v = _velocity(w_prev, w_curr, dt)
-            if v >= _STRIKE_VELOCITY_THRESHOLD and w_curr is not None:
-                landed = self._strike_landed(w_curr, fs, "upper")
+            if v >= _STRIKE_VELOCITY_THRESHOLD and w_curr is not None and w_prev is not None:
+                landed   = self._strike_landed(w_curr, fs, "upper")
+                subtype  = self._classify_punch_subtype(w_prev, w_curr, fs, wrist_fn)
+                is_ground = striker_grounded or opp_grounded
+                etype    = EventType.GROUND_STRIKE if is_ground else EventType.PUNCH
                 events.append(FightEvent(
-                    timestamp_secs=fs.ts,
-                    event_type=EventType.PUNCH,
-                    limb=Limb.FIST,
-                    target_zone=self._resolve_target_zone(w_curr, fs),
-                    outcome=Outcome.LANDED if landed else Outcome.MISSED,
-                    confidence=min(_CONFIDENCE_STRIKE_RULE + v, 0.9),
+                    timestamp_secs   = fs.ts,
+                    event_type       = etype,
+                    limb             = Limb.FIST,
+                    target_zone      = self._resolve_target_zone(w_curr, fs),
+                    outcome          = Outcome.LANDED if landed else Outcome.MISSED,
+                    punch_subtype    = subtype if not is_ground else None,
+                    is_ground_strike = is_ground,
+                    confidence       = min(_CONFIDENCE_STRIKE_RULE + v, 0.9),
                 ))
                 break  # one punch event per frame
 
@@ -242,16 +261,73 @@ class FightClassifier:
                 limb   = Limb.FOOT if target == TargetZone.HEAD else Limb.SHIN
                 landed = self._strike_landed(a_curr, fs, "lower")
                 events.append(FightEvent(
-                    timestamp_secs=fs.ts,
-                    event_type=EventType.KICK,
-                    limb=limb,
-                    target_zone=target,
-                    outcome=Outcome.LANDED if landed else Outcome.MISSED,
-                    confidence=min(_CONFIDENCE_STRIKE_RULE + v, 0.9),
+                    timestamp_secs = fs.ts,
+                    event_type     = EventType.KICK,
+                    limb           = limb,
+                    target_zone    = target,
+                    outcome        = Outcome.LANDED if landed else Outcome.MISSED,
+                    confidence     = min(_CONFIDENCE_STRIKE_RULE + v, 0.9),
                 ))
                 break
 
         return events
+
+    def _classify_punch_subtype(
+        self,
+        prev_pt: Tuple[float, float],
+        curr_pt: Tuple[float, float],
+        fs: FrameState,
+        wrist_fn,                        # FrameState.wrist_l or wrist_r
+    ) -> Optional[PunchSubtype]:
+        """
+        Geometry-based punch subtype from wrist displacement vector.
+
+        Coordinate system (normalised):
+          x: 0=left edge, 1=right edge
+          y: 0=top edge, 1=bottom edge (y increases downward)
+
+        Displacement (dx, dy):
+          dx > 0  → moving right  (toward opponent if fighter faces right)
+          dy < 0  → moving up     (upward in image = upward in reality)
+
+        Lead hand: ankle closer to opponent
+        """
+        dx = curr_pt[0] - prev_pt[0]
+        dy = curr_pt[1] - prev_pt[1]   # negative = upward
+        total = math.sqrt(dx**2 + dy**2)
+        if total < 1e-6:
+            return None
+
+        lateral_ratio = abs(dx) / total
+        upward_ratio  = max(-dy, 0) / total   # upward component
+        forward_ratio = 1.0 - lateral_ratio   # proxy for straight
+
+        # Uppercut: dominant upward motion
+        if upward_ratio >= _UPPERCUT_UPWARD_RATIO:
+            return PunchSubtype.UPPERCUT
+
+        # Hook: dominant lateral motion
+        if lateral_ratio >= _HOOK_LATERAL_RATIO:
+            return PunchSubtype.HOOK
+
+        # Jab vs Cross: determine lead hand
+        # Lead ankle = ankle closer to opponent
+        is_left_wrist = (wrist_fn is FrameState.wrist_l)
+        if fs.opp is not None:
+            opp_is_right   = fs.opp.cx > fs.obs.cx
+            left_is_lead   = (fs.obs.keypoints.left_ankle[0] > fs.obs.keypoints.right_ankle[0]) \
+                             if (fs.obs.keypoints and opp_is_right) else \
+                             (fs.obs.keypoints.left_ankle[0] < fs.obs.keypoints.right_ankle[0]) \
+                             if fs.obs.keypoints else True
+            lead_is_left   = left_is_lead
+        else:
+            lead_is_left   = True  # default orthodox
+
+        if is_left_wrist and lead_is_left:
+            return PunchSubtype.JAB
+        if not is_left_wrist and not lead_is_left:
+            return PunchSubtype.JAB
+        return PunchSubtype.CROSS
 
     def _strike_landed(
         self, point: Tuple[float, float], fs: FrameState, region: str
@@ -286,17 +362,39 @@ class FightClassifier:
     # ------------------------------------------------------------------
 
     def _detect_knockdown(self, fs: FrameState) -> List[FightEvent]:
+        events: List[FightEvent] = []
         if not self._history:
-            return []
+            self._floored_frames = 0
+            return events
+
         prev = self._history[-1]
-        # Transition: was standing, now floored
-        if not prev.is_floored() and fs.is_floored():
-            return [FightEvent(
-                timestamp_secs=fs.ts,
-                event_type=EventType.KNOCKDOWN,
-                confidence=0.75,
-            )]
-        return []
+
+        if fs.is_floored():
+            self._floored_frames += 1
+            # First frame down → knockdown
+            if not prev.is_floored() and not self._kd_emitted:
+                events.append(FightEvent(
+                    timestamp_secs = fs.ts,
+                    event_type     = EventType.KNOCKDOWN,
+                    confidence     = 0.75,
+                ))
+                self._kd_emitted = True
+            # Stayed down long enough → upgrade to KO
+            elif self._kd_emitted and self._floored_frames >= _KO_FLOOR_FRAMES:
+                events.append(FightEvent(
+                    timestamp_secs = fs.ts,
+                    event_type     = EventType.KO,
+                    confidence     = 0.80,
+                ))
+                # Reset so we don't keep emitting
+                self._kd_emitted     = False
+                self._floored_frames = 0
+        else:
+            # Fighter back up
+            self._floored_frames = 0
+            self._kd_emitted     = False
+
+        return events
 
     # ------------------------------------------------------------------
     # Takedown
