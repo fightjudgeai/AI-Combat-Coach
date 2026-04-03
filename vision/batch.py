@@ -108,7 +108,7 @@ def run_batch(
                 continue
 
         for idx, fighter_id in enumerate(item.fighter_ids):
-            if fighter_id is None:
+            if fighter_id is None and not allow_null_ids:
                 log.debug(
                     "fighter_ids[%d] is None for %s — corner pairings incomplete",
                     idx, item.fight_slug,

@@ -104,8 +104,15 @@ def run(
     source_type = detect_source_type(source)
 
     try:
-        job_id = create_job(source, source_type, fighter_id)
-        log.info("Job %s started | source=%s corner=%s", job_id, source, corner)
+        try:
+            job_id = create_job(source, source_type, fighter_id)
+            log.info("Job %s started | source=%s corner=%s", job_id, source, corner)
+        except Exception as db_exc:
+            log.warning(
+                "vision_jobs insert skipped (table may not exist yet): %s", db_exc
+            )
+            job_id = None
+            log.info("Pipeline running without DB job tracking | source=%s corner=%s", source, corner)
 
         # ------------------------------------------------------------------
         # 1. Resolve video to local path
@@ -187,7 +194,8 @@ def run(
         # 5. Write to DB
         # ------------------------------------------------------------------
         raw_out = {**attrs, "event_count": len(all_events), "summary": summary}
-        complete_job(job_id, frames_sampled, duration, raw_out)
+        if job_id:
+            complete_job(job_id, frames_sampled, duration, raw_out)
 
         if fighter_id:
             if all_events:
