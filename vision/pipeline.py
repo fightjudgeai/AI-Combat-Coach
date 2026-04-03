@@ -33,6 +33,7 @@ import cv2
 
 from .attribute import FighterAccumulator
 from .aggression import build_summary
+from .body_tagger import BodyPartAccumulator
 from .classifier import FightClassifier, FrameState
 from .detect import FighterObservation, PoseDetector
 from .extract import iter_frames, video_duration
@@ -129,6 +130,7 @@ def run(
         detector = PoseDetector(device=device)
         accumulator = FighterAccumulator(target_track_id=-1)  # target assigned first frame
         classifier  = FightClassifier(sample_interval=interval)
+        body_tagger = BodyPartAccumulator()
         all_events: List[FightEvent] = []
         cx_snapshots: List[tuple[float, float]] = []
         first_frame_seen: Dict[int, float] = {}
@@ -166,6 +168,7 @@ def run(
             # Only accumulate frames where our target is visible
             if target_obs.track_id == target_track_id:
                 accumulator.ingest(ts, target_obs, opp_obs)
+                body_tagger.ingest(ts, target_obs, frame_w, frame_h)
                 cx_snapshots.append((ts, target_obs.cx))
 
                 # Classifier: build FrameState and detect events
@@ -185,8 +188,10 @@ def run(
         # ------------------------------------------------------------------
         # 4. Compute style attributes + event summary
         # ------------------------------------------------------------------
-        attrs   = accumulator.compute()
-        summary = build_summary(all_events, cx_snapshots, duration, interval)
+        attrs           = accumulator.compute()
+        body_part_stats = body_tagger.compute()
+        summary         = build_summary(all_events, cx_snapshots, duration, interval,
+                                        body_part_stats=body_part_stats)
         log.info("Attributes computed: %s", attrs)
         log.info("Events detected: %d total", len(all_events))
 

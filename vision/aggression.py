@@ -107,6 +107,7 @@ def build_summary(
     frame_snapshots_cx: List[tuple[float, float]],
     video_duration_secs: float,
     sample_interval: float,
+    body_part_stats: "dict | None" = None,
 ) -> dict:
     """
     Aggregate a flat list of FightEvents into the fight_event_summary columns.
@@ -158,6 +159,10 @@ def build_summary(
         "kicks_missed":             count(EventType.KICK,         O.MISSED),
         "elbows_missed":            count(EventType.ELBOW_STRIKE,  O.MISSED),
         "knees_missed":             count(EventType.KNEE_STRIKE,   O.MISSED),
+        # Missed kick zone breakdown
+        "kicks_missed_head":         count(EventType.KICK, O.MISSED, TargetZone.HEAD),
+        "kicks_missed_body":         count(EventType.KICK, O.MISSED, TargetZone.BODY),
+        "kicks_missed_leg":          count(EventType.KICK, O.MISSED, TargetZone.LEG),
         "jabs_attempted":            count(EventType.PUNCH, punch_subtype=PunchSubtype.JAB),
         "jabs_landed":               count(EventType.PUNCH, O.LANDED,  punch_subtype=PunchSubtype.JAB),
         "crosses_attempted":         count(EventType.PUNCH, punch_subtype=PunchSubtype.CROSS),
@@ -186,6 +191,10 @@ def build_summary(
         "reversals":                count(EventType.REVERSAL),
         "pressure_score":           pressure,
         "aggression_score":         aggression,
+        # Body-part frame visibility + kinematics (from BodyPartAccumulator)
+        "body_part_frames":         (body_part_stats or {}).get("visibility", {}),
+        "kinematic_features":       (body_part_stats or {}).get("kinematics", {}),
+        "spatial_coverage":         (body_part_stats or {}).get("spatial", {}),
     }
 
 

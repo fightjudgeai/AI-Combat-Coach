@@ -24,16 +24,21 @@ from .events import (
 )
 
 # ---------------------------------------------------------------------------
-# COCO keypoint indices (referenced in detect.py Keypoints dataclass)
+# COCO keypoint indices
 # ---------------------------------------------------------------------------
-# We receive pre-extracted Keypoints objects, not raw indices.
-# Additional keypoints we need from the raw 17-kp array:
-#   0=nose  7=left_wrist  8=right_wrist  9=left_elbow  10=right_elbow
+# 0=nose  1-4=eyes/ears  5=left_shoulder  6=right_shoulder
+# 7=left_elbow  8=right_elbow  9=left_wrist  10=right_wrist
+# 11=left_hip  12=right_hip  13=left_knee  14=right_knee
+# 15=left_ankle  16=right_ankle
 
 # ---------------------------------------------------------------------------
 # Thresholds
 # ---------------------------------------------------------------------------
 _STRIKE_VELOCITY_THRESHOLD   = 0.04   # wrist/ankle displacement per frame (fraction of frame)
+_ELBOW_VELOCITY_THRESHOLD    = 0.035  # elbows move slightly less than wrists
+_KNEE_VELOCITY_THRESHOLD     = 0.035  # knees in clinch
+_ELBOW_RANGE_MULTIPLIER      = 2.0    # elbows fire within this * CLINCH_DISTANCE
+_KNEE_RANGE_MULTIPLIER       = 1.5    # knees fire within clinch range
 _CLINCH_DISTANCE             = 0.18   # fraction of frame width
 _CAGE_EDGE_THRESHOLD         = 0.08   # fraction of frame width from edge
 _GROUND_HIP_THRESHOLD        = 0.72   # hip y > this fraction of frame height → grounded
@@ -58,10 +63,13 @@ _KO_FLOOR_FRAMES             = 3      # at sample_interval=2s this is ~6 s of be
 
 class FrameState:
     """
-    Wraps FighterObservation + raw 17-kp array for wrist/elbow access.
-    We attach the raw xy array when available (detect.py can expose it).
+    Wraps FighterObservation for one frame, providing normalised keypoint
+    accessors and geometric helpers used by the classifier.
+
+    All coordinate accessors return (x, y) in [0, 1] relative to frame
+    dimensions, or None if the keypoint confidence is too low.
     """
-    __slots__ = ("ts", "obs", "opp", "raw_kp", "frame_w", "frame_h")
+    __slots__ = ("ts", "obs", "opp", "frame_w", "frame_h")
 
     def __init__(
         self,
@@ -70,40 +78,41 @@ class FrameState:
         opp: Optional[FighterObservation],
         frame_w: int,
         frame_h: int,
-        raw_kp: Optional[np.ndarray] = None,   # shape (17, 2) in pixels
     ):
         self.ts      = ts
         self.obs     = obs
         self.opp     = opp
-        self.raw_kp  = raw_kp
         self.frame_w = frame_w
         self.frame_h = frame_h
 
-    # Normalised keypoints (0-1)
+    # ------------------------------------------------------------------
+    # Keypoint accessors (normalised 0-1)
+    # ------------------------------------------------------------------
+
     def _norm(self, px: float, py: float) -> Tuple[float, float]:
         return px / self.frame_w, py / self.frame_h
 
-    def wrist_l(self) -> Optional[Tuple[float, float]]:
-        if self.raw_kp is not None and self.obs.keypoints and self.obs.keypoints.confidence[9] > 0.4:
-            return self._norm(*self.raw_kp[9])
-        return None
-
-    def wrist_r(self) -> Optional[Tuple[float, float]]:
-        if self.raw_kp is not None and self.obs.keypoints and self.obs.keypoints.confidence[10] > 0.4:
-            return self._norm(*self.raw_kp[10])
-        return None
-
-    def ankle_l(self) -> Optional[Tuple[float, float]]:
+    def _kp(
+        self, idx: int, min_conf: float = 0.4
+    ) -> Optional[Tuple[float, float]]:
+        """Return normalised (x, y) for COCO keypoint index, or None."""
         kp = self.obs.keypoints
-        if kp and kp.confidence[15] > 0.4:
-            return self._norm(*kp.left_ankle)
-        return None
+        if kp is None or kp.confidence[idx] < min_conf:
+            return None
+        return self._norm(kp.raw_xy[idx, 0], kp.raw_xy[idx, 1])
 
-    def ankle_r(self) -> Optional[Tuple[float, float]]:
-        kp = self.obs.keypoints
-        if kp and kp.confidence[16] > 0.4:
-            return self._norm(*kp.right_ankle)
-        return None
+    # Head
+    def nose(self)    -> Optional[Tuple[float, float]]: return self._kp(0)
+    # Arms
+    def wrist_l(self) -> Optional[Tuple[float, float]]: return self._kp(9)
+    def wrist_r(self) -> Optional[Tuple[float, float]]: return self._kp(10)
+    def elbow_l(self) -> Optional[Tuple[float, float]]: return self._kp(7)
+    def elbow_r(self) -> Optional[Tuple[float, float]]: return self._kp(8)
+    # Legs
+    def knee_l(self)  -> Optional[Tuple[float, float]]: return self._kp(13)
+    def knee_r(self)  -> Optional[Tuple[float, float]]: return self._kp(14)
+    def ankle_l(self) -> Optional[Tuple[float, float]]: return self._kp(15)
+    def ankle_r(self) -> Optional[Tuple[float, float]]: return self._kp(16)
 
     def hip_mid_y(self) -> Optional[float]:
         kp = self.obs.keypoints
@@ -117,24 +126,14 @@ class FrameState:
             return (kp.left_shoulder[1] + kp.right_shoulder[1]) / 2 / self.frame_h
         return None
 
-    def is_grounded(self) -> bool:
-        h = self.hip_mid_y()
-        return h is not None and h > _GROUND_HIP_THRESHOLD
-
-    def is_floored(self) -> bool:
-        s = self.shoulder_mid_y()
-        return s is not None and s > _KD_SHOULDER_THRESHOLD
-
-    def dist_to_opp(self) -> Optional[float]:
-        if self.opp is None:
+    # Opponent keypoint helpers (for target zone resolution)
+    def opp_nose(self) -> Optional[Tuple[float, float]]:
+        if self.opp is None or self.opp.keypoints is None:
             return None
-        return abs(self.obs.cx - self.opp.cx)
-
-    def near_cage_left(self) -> bool:
-        return self.obs.cx < _CAGE_EDGE_THRESHOLD
-
-    def near_cage_right(self) -> bool:
-        return self.obs.cx > 1.0 - _CAGE_EDGE_THRESHOLD
+        kp = self.opp.keypoints
+        if kp.confidence[0] < 0.35:
+            return None
+        return kp.raw_xy[0, 0] / self.frame_w, kp.raw_xy[0, 1] / self.frame_h
 
 
 # ---------------------------------------------------------------------------
@@ -181,11 +180,14 @@ class FightClassifier:
         events: List[FightEvent] = []
 
         events.extend(self._detect_strikes(fs))
+        events.extend(self._detect_elbow_strike(fs))
+        events.extend(self._detect_knee_strike(fs))
         events.extend(self._detect_knockdown(fs))
         events.extend(self._detect_takedown(fs))
         events.extend(self._detect_position(fs))
         events.extend(self._detect_clinch(fs))
         events.extend(self._detect_cage(fs))
+        events.extend(self._detect_submission_attempt(fs))
 
         self._history.append(fs)
         return [e for e in events if self._not_duplicate(e)]
@@ -356,6 +358,140 @@ class FightClassifier:
         if strike_y < hip_y * 1.1:
             return TargetZone.BODY
         return TargetZone.LEG
+
+    # ------------------------------------------------------------------
+    # Elbow strike detection
+    # ------------------------------------------------------------------
+
+    def _detect_elbow_strike(self, fs: FrameState) -> List[FightEvent]:
+        """
+        Detect elbow strikes via elbow-keypoint velocity in close range.
+        Elbows are typically deployed in clinch or from mid-range.
+        """
+        events: List[FightEvent] = []
+        if not self._history:
+            return events
+
+        prev  = self._history[-1]
+        dt    = max(fs.ts - prev.ts, 1e-3)
+        dist  = fs.dist_to_opp() or 1.0
+
+        # Only fire in elbow range (roughly 2× clinch distance)
+        if dist > _CLINCH_DISTANCE * _ELBOW_RANGE_MULTIPLIER:
+            return events
+
+        for elbow_fn in (FrameState.elbow_l, FrameState.elbow_r):
+            e_prev = elbow_fn(prev)
+            e_curr = elbow_fn(fs)
+            v = _velocity(e_prev, e_curr, dt)
+            if v >= _ELBOW_VELOCITY_THRESHOLD and e_curr is not None:
+                landed  = self._strike_landed(e_curr, fs, "upper")
+                target  = self._resolve_target_zone(e_curr, fs)
+                events.append(FightEvent(
+                    timestamp_secs   = fs.ts,
+                    event_type       = EventType.ELBOW_STRIKE,
+                    limb             = Limb.ELBOW,
+                    target_zone      = target,
+                    outcome          = Outcome.LANDED if landed else Outcome.MISSED,
+                    is_ground_strike = fs.is_grounded(),
+                    confidence       = min(_CONFIDENCE_STRIKE_RULE + v * 0.8, 0.90),
+                ))
+                break  # one elbow event per frame
+        return events
+
+    # ------------------------------------------------------------------
+    # Knee strike detection
+    # ------------------------------------------------------------------
+
+    def _detect_knee_strike(self, fs: FrameState) -> List[FightEvent]:
+        """
+        Detect knee strikes via knee-keypoint velocity.
+        Knees are most common in clinch or Thai plum positions.
+        """
+        events: List[FightEvent] = []
+        if not self._history:
+            return events
+
+        prev  = self._history[-1]
+        dt    = max(fs.ts - prev.ts, 1e-3)
+        dist  = fs.dist_to_opp() or 1.0
+        in_clinch = (dist <= _CLINCH_DISTANCE * _KNEE_RANGE_MULTIPLIER)
+
+        for knee_fn in (FrameState.knee_l, FrameState.knee_r):
+            k_prev = knee_fn(prev)
+            k_curr = knee_fn(fs)
+            v = _velocity(k_prev, k_curr, dt)
+            # Knees can also be thrown from mid-range (flying knee, etc.)
+            if v >= _KNEE_VELOCITY_THRESHOLD and k_curr is not None:
+                landed  = self._strike_landed(k_curr, fs, "body_head")
+                target  = self._resolve_target_zone(k_curr, fs)
+                events.append(FightEvent(
+                    timestamp_secs   = fs.ts,
+                    event_type       = EventType.KNEE_STRIKE,
+                    limb             = Limb.KNEE,
+                    target_zone      = target,
+                    outcome          = Outcome.LANDED if landed else Outcome.MISSED,
+                    is_ground_strike = fs.is_grounded() or (
+                        fs.opp is not None and
+                        fs.opp.keypoints is not None and
+                        fs.opp.keypoints.left_hip[1] / fs.frame_h > _GROUND_HIP_THRESHOLD
+                    ),
+                    confidence       = min(
+                        (_CONFIDENCE_STRIKE_RULE + v * 0.8) * (1.1 if in_clinch else 1.0),
+                        0.90,
+                    ),
+                ))
+                break
+        return events
+
+    # ------------------------------------------------------------------
+    # Submission attempt detection
+    # ------------------------------------------------------------------
+
+    def _detect_submission_attempt(self, fs: FrameState) -> List[FightEvent]:
+        """
+        Heuristic: detect submission attempts when both fighters are in
+        a ground position, one appears to have limb control (wrist near
+        opponent hip/neck region).  Low confidence — this is a coarse signal
+        that downstream ML should refine.
+        """
+        if not self._history:
+            return []
+
+        # Both fighters must be grounded
+        if not fs.is_grounded():
+            return []
+        if fs.opp is None or fs.opp.keypoints is None:
+            return []
+        opp_grounded = (fs.opp.keypoints.left_hip[1] / fs.frame_h > _GROUND_HIP_THRESHOLD)
+        if not opp_grounded:
+            return []
+
+        # Positional prerequisite: body contact (side_control / back_control / guard)
+        in_ground_pos = self._position in (
+            Position.HALF_GUARD, Position.FULL_GUARD,
+            Position.SIDE_CONTROL, Position.BACK_CONTROL,
+        )
+        if not in_ground_pos:
+            return []
+
+        # Wrist near opponent neck region (y << opponent shoulder_y)
+        opp_kp = fs.opp.keypoints
+        shoulder_y = (opp_kp.left_shoulder[1] + opp_kp.right_shoulder[1]) / 2 / fs.frame_h
+
+        for wrist_fn in (FrameState.wrist_l, FrameState.wrist_r):
+            w = wrist_fn(fs)
+            if w is None:
+                continue
+            # Wrist above (lower y value) or at opponent shoulder → choke attempt region
+            if w[1] <= shoulder_y + 0.05:
+                return [FightEvent(
+                    timestamp_secs = fs.ts,
+                    event_type     = EventType.SUBMISSION_ATTEMPT,
+                    position       = self._position,
+                    confidence     = 0.45,   # low — heuristic only
+                )]
+        return []
 
     # ------------------------------------------------------------------
     # Knockdown
