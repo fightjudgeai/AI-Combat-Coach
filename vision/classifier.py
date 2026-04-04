@@ -57,10 +57,10 @@ _LEAD_HAND_TOLERANCE         = 0.05   # cx offset tolerance for lead/rear hand d
 _KO_FLOOR_FRAMES             = 3      # at sample_interval=2s this is ~6 s of being down
 
 # Single-frame pose geometry thresholds (punch / kick extension-based detection)
-_PUNCH_EXTENSION_RATIO       = 1.5    # wrist-to-ipsi-shoulder distance / shoulder-width
-_KICK_HIP_RAISE_RATIO        = 0.15   # ankle must be at least this far above hip_y (normalised)
-_KICK_MIN_NORM_HEIGHT        = 0.30   # ankle must be above this y-fraction of frame (not on ground)
-_PUNCH_GUARD_WX_BUFFER       = 0.04   # ignore wrists this close to the fighter centre-x (guard pos)
+_PUNCH_EXTENSION_RATIO       = 1.2    # wrist-to-ipsi-shoulder distance / shoulder-width
+_KICK_HIP_RAISE_RATIO        = 0.10   # ankle must be at least this far above hip_y (normalised)
+_KICK_MAX_ANKLE_Y            = 0.78   # ankle must be ABOVE this y-fraction (below = on ground)
+_PUNCH_GUARD_WX_BUFFER       = 0.03   # ignore wrists this close to the fighter centre-x (guard pos)
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +311,7 @@ class FightClassifier:
         opp_cx = fs.opp.cx if fs.opp else None
         punch_detected = False
         for wrist_idx, sh_idx in ((9, 5), (10, 6)):   # (left wrist, left shoulder) / right
-            if kp.confidence[wrist_idx] < 0.4:
+            if kp.confidence[wrist_idx] < 0.3:
                 continue
             wx = kp.raw_xy[wrist_idx, 0] / fs.frame_w
             wy = kp.raw_xy[wrist_idx, 1] / fs.frame_h
@@ -372,7 +372,7 @@ class FightClassifier:
                 raise_amount = hip_y - ankle_y   # positive = ankle above hip (y inverted)
                 if raise_amount < _KICK_HIP_RAISE_RATIO:
                     continue
-                if ankle_y > _KICK_MIN_NORM_HEIGHT:  # ankle too low = not a real kick
+                if ankle_y > _KICK_MAX_ANKLE_Y:  # ankle still near ground, not raised
                     continue
 
                 ankle_norm = (ankle_x, ankle_y)
