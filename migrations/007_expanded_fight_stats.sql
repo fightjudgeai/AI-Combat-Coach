@@ -83,21 +83,21 @@ SELECT
     fighter_id,
     COUNT(DISTINCT job_id)                                              AS fights_analyzed,
     -- Average visibility % for key strike weapons
-    ROUND(AVG((body_part_frames->>'glove_l'->>'visibility_pct')::numeric), 1)
+    ROUND(AVG((body_part_frames->'glove_l'->>'visibility_pct')::numeric), 1)
                                                                         AS avg_glove_l_pct,
-    ROUND(AVG((body_part_frames->>'glove_r'->>'visibility_pct')::numeric), 1)
+    ROUND(AVG((body_part_frames->'glove_r'->>'visibility_pct')::numeric), 1)
                                                                         AS avg_glove_r_pct,
-    ROUND(AVG((body_part_frames->>'elbow_l'->>'visibility_pct')::numeric), 1)
+    ROUND(AVG((body_part_frames->'elbow_l'->>'visibility_pct')::numeric), 1)
                                                                         AS avg_elbow_l_pct,
-    ROUND(AVG((body_part_frames->>'elbow_r'->>'visibility_pct')::numeric), 1)
+    ROUND(AVG((body_part_frames->'elbow_r'->>'visibility_pct')::numeric), 1)
                                                                         AS avg_elbow_r_pct,
-    ROUND(AVG((body_part_frames->>'knee_l'->>'visibility_pct')::numeric), 1)
+    ROUND(AVG((body_part_frames->'knee_l'->>'visibility_pct')::numeric), 1)
                                                                         AS avg_knee_l_pct,
-    ROUND(AVG((body_part_frames->>'knee_r'->>'visibility_pct')::numeric), 1)
+    ROUND(AVG((body_part_frames->'knee_r'->>'visibility_pct')::numeric), 1)
                                                                         AS avg_knee_r_pct,
-    ROUND(AVG((body_part_frames->>'foot_l'->>'visibility_pct')::numeric), 1)
+    ROUND(AVG((body_part_frames->'foot_l'->>'visibility_pct')::numeric), 1)
                                                                         AS avg_foot_l_pct,
-    ROUND(AVG((body_part_frames->>'foot_r'->>'visibility_pct')::numeric), 1)
+    ROUND(AVG((body_part_frames->'foot_r'->>'visibility_pct')::numeric), 1)
                                                                         AS avg_foot_r_pct
 FROM fight_event_summary
 WHERE fighter_id IS NOT NULL
