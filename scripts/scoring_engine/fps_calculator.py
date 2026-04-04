@@ -1,32 +1,38 @@
 from dataclasses import dataclass
 
+
 @dataclass
 class RoundResult:
     round_number: int
     rps: float
     seconds: int
 
+
 @dataclass
 class FPSResult:
     fps: float
     fps_tier: str
     weighted_rps: float
-    cardio_45: float | None  # only for 5-round fights
-    was_override_applied: bool
-    override_base: float | None
+    cardio_45: float | None          # only populated for 5-round fights
+    finish_quality_score: float | None  # informational FQT sub-score (0–100)
+    floor_applied: float | None      # non-None if a winner floor was enforced
+    cap_applied: float | None        # non-None if a loser cap was enforced
     fight_total_seconds: int
 
-# ────────────────────────────────────────
-# FINISH OVERRIDE TABLE (winner)
-# Exact from your spec
-# ────────────────────────────────────────
-FINISH_OVERRIDES_WINNER = {
-    ('ko',  1, (0,   60)): 98,
-    ('sub', 1, (0,   60)): 96,
-    ('ko',  1, (61,  90)): 95,
-    ('sub', 1, (61,  90)): 93,
-    ('ko',  1, (91, 300)): 92,
-    ('sub', 1, (91, 300)): 90,
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FINISH QUALITY / TIME sub-scores  (informational — the 8% FQT component)
+# These are NOT FPS floors/caps.  They represent the quality of the finish
+# on a 0–100 scale that feeds the FinishQualityTime concept.
+# ─────────────────────────────────────────────────────────────────────────────
+FINISH_QUALITY_SCORES_WINNER = {
+    # key: (method_key, finish_round, time_bucket)
+    ('ko',  1, 'sub_60'):  98,
+    ('sub', 1, 'sub_60'):  96,
+    ('ko',  1, '61_90'):   95,
+    ('sub', 1, '61_90'):   93,
+    ('ko',  1, 'post_90'): 92,
+    ('sub', 1, 'post_90'): 90,
     ('ko',  2, None):      86,
     ('sub', 2, None):      84,
     ('ko',  3, None):      80,
@@ -40,21 +46,35 @@ FINISH_OVERRIDES_WINNER = {
     ('md',  None, None):   60,
 }
 
-# Loser FPS by finish round
-FINISH_LOSERS = {1: 20, 2: 28, 3: 34, 4: 38, 5: 42}
-DECISION_LOSS = 44  # middle of 40-48 range
+FINISH_QUALITY_SCORES_LOSER = {1: 20, 2: 28, 3: 34, 4: 38, 5: 42}
+DECISION_QUALITY_SCORE_LOSER = 44  # mid-point of 40–48 range
 
-# Winner floors (minimum FPS even with low RPS)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HARD OVERRIDE TABLES — these set hard floors/caps on the FINAL FPS score
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Winner floors: =MAX(FPS_Base, FinishFloor)
 WINNER_FLOORS = {
-    (1, (0,   60)): 82,
-    (1, (61,  90)): 79,
-    (1, (91, 300)): 76,
+    (1, 'sub_60'):  82,
+    (1, '61_90'):   79,
+    (1, 'post_90'): 76,
     (2, None):      72,
     (3, None):      68,
 }
 
-# Loser caps (maximum FPS even with high RPS)
+# Finish-loss caps: =MIN(FPS_Base, FinishLossCap)
 LOSER_CAPS = {1: 38, 2: 48, 3: 54}
+
+
+def _time_bucket(seconds: int) -> str:
+    """Classify R1 finish time into spec tiers."""
+    if seconds <= 60:
+        return 'sub_60'
+    elif seconds <= 90:
+        return '61_90'
+    return 'post_90'
+
 
 def get_fps_tier(fps: float) -> str:
     if fps >= 90: return "DOMINANT"
@@ -64,8 +84,9 @@ def get_fps_tier(fps: float) -> str:
     if fps >= 30: return "LOSING"
     return "POOR"
 
+
 def normalize_method(method: str) -> str:
-    """Map ufcstats method strings to your normalized keys"""
+    """Map ufcstats method strings to normalised keys."""
     m = method.lower()
     if 'tko' in m or 'technical knockout' in m: return 'tko'
     if 'ko' in m or 'knockout' in m: return 'ko'
@@ -75,102 +96,97 @@ def normalize_method(method: str) -> str:
     if 'majority' in m: return 'md'
     return 'other'
 
+
 def calculate_fps(
     rounds: list[RoundResult],
     fighter_won: bool,
     method: str,
     finish_round: int | None,
     finish_time_seconds: int | None,
-    rounds_scheduled: int
+    rounds_scheduled: int,
 ) -> FPSResult:
+    """
+    FPS = aggregated RPS + fight-wide adjustments.
 
+    Base:        time-weighted RPS across all rounds
+    5-round add: Cardio45 blended at 10% (rounds 4+5 retention vs rounds 1–3)
+    Overrides:   winner floor if finish, loser cap if finish loss
+    """
     method_norm = normalize_method(method)
+    method_key = 'ko' if method_norm in ('ko', 'tko') else method_norm
+    is_finish = finish_round is not None and method_key in ('ko', 'sub')
 
-    # ────────────────────────────────────────
-    # WEIGHTED RPS BASE
-    # ────────────────────────────────────────
+    # ─── TIME-WEIGHTED RPS (non-negotiable backbone) ─────────────────────────
     total_seconds = sum(r.seconds for r in rounds)
     weighted_rps = sum(r.rps * r.seconds for r in rounds) / max(1, total_seconds)
 
-    # ────────────────────────────────────────
-    # CARDIO45 (5-round fights only)
-    # ────────────────────────────────────────
-    cardio_45 = None
+    # ─── CARDIO45  ── only for 5-round fights when R4/R5 existed ─────────────
+    cardio_45: float | None = None
     if rounds_scheduled == 5 and len(rounds) >= 4:
-        early_rounds = [r for r in rounds if r.round_number <= 3]
-        late_rounds = [r for r in rounds if r.round_number >= 4]
+        early = [r for r in rounds if r.round_number <= 3]
+        late  = [r for r in rounds if r.round_number >= 4]
 
-        early_sec = sum(r.seconds for r in early_rounds)
-        late_sec = sum(r.seconds for r in late_rounds)
+        early_sec = sum(r.seconds for r in early)
+        late_sec  = sum(r.seconds for r in late)
 
-        early_rps = sum(r.rps * r.seconds for r in early_rounds) / max(1, early_sec)
-        late_rps = sum(r.rps * r.seconds for r in late_rounds) / max(1, late_sec)
+        early_rps = sum(r.rps * r.seconds for r in early) / max(1, early_sec)
+        late_rps  = sum(r.rps * r.seconds for r in late)  / max(1, late_sec)
 
-        late_rounds_full = sum(r.seconds for r in late_rounds if r.round_number in [4, 5])
-        late_bonus = 5 if late_rounds_full >= 480 else 0
+        late_bonus = 5 if late_sec >= 480 else 0
+        cardio_45  = max(0.0, min(100.0, 50 + (late_rps - early_rps) * 1.2 + late_bonus))
 
-        cardio_45 = 50 + (late_rps - early_rps) * 1.2 + late_bonus
-
-        # FPS for 5-round fights includes cardio
+    # ─── BASE FPS ─────────────────────────────────────────────────────────────
+    if cardio_45 is not None:
         base_fps = (weighted_rps * 0.90) + (cardio_45 * 0.10)
     else:
         base_fps = weighted_rps
 
-    # ────────────────────────────────────────
-    # FINISH OVERRIDES
-    # ────────────────────────────────────────
-    override_value = None
-    floor_value = None
-    cap_value = None
+    # ─── FINISH QUALITY SCORE  (informational sub-score) ─────────────────────
+    finish_quality_score: float | None = None
+    if is_finish and finish_round is not None:
+        bucket = _time_bucket(finish_time_seconds or 300) if finish_round == 1 else None
+        if fighter_won:
+            finish_quality_score = FINISH_QUALITY_SCORES_WINNER.get((method_key, finish_round, bucket))
+        else:
+            finish_quality_score = float(FINISH_QUALITY_SCORES_LOSER.get(finish_round, 20))
+    elif method_key in ('ud', 'sd', 'md'):
+        fq_key = (method_key, None, None)
+        if fighter_won:
+            finish_quality_score = float(FINISH_QUALITY_SCORES_WINNER.get(fq_key, 68))
+        else:
+            finish_quality_score = float(DECISION_QUALITY_SCORE_LOSER)
 
-    if fighter_won and finish_round and method_norm in ('ko', 'tko', 'sub'):
-        method_key = 'ko' if method_norm in ('ko', 'tko') else 'sub'
-        finish_sec = finish_time_seconds or 300
+    # ─── APPLY FLOORS / CAPS ─────────────────────────────────────────────────
+    floor_applied: float | None = None
+    cap_applied: float | None = None
+    final_fps = base_fps
 
-        # Look up override
-        for (m, rnd, time_range), val in FINISH_OVERRIDES_WINNER.items():
-            if m == method_key and rnd == finish_round:
-                if time_range is None or (time_range[0] <= finish_sec <= time_range[1]):
-                    override_value = val
-                    break
+    if fighter_won and is_finish and finish_round is not None:
+        # Winner floor: =MAX(FPS_Base, FinishFloor)
+        bucket = _time_bucket(finish_time_seconds or 300) if finish_round == 1 else None
+        floor = WINNER_FLOORS.get((finish_round, bucket))
+        if floor is not None and base_fps < floor:
+            floor_applied = floor
+            final_fps = floor
 
-        # Look up floor
-        for (rnd, time_range), val in WINNER_FLOORS.items():
-            if rnd == finish_round:
-                if time_range is None or (time_range[0] <= finish_sec <= time_range[1]):
-                    floor_value = val
-                    break
+    elif not fighter_won and is_finish and finish_round is not None:
+        # Finish-loss cap: =MIN(FPS_Base, FinishLossCap)
+        cap = LOSER_CAPS.get(finish_round)
+        if cap is not None and base_fps > cap:
+            cap_applied = cap
+            final_fps = cap
 
-        final_fps = max(base_fps, floor_value or 0)
-        if override_value:
-            final_fps = max(final_fps, override_value)
+    # Decision outcomes use weighted RPS as-is (no static floor/cap)
 
-    elif not fighter_won and finish_round and method_norm in ('ko', 'tko', 'sub'):
-        # Loss by finish
-        final_fps = FINISH_LOSERS.get(finish_round, DECISION_LOSS)
-        cap_value = LOSER_CAPS.get(finish_round)
-        if cap_value:
-            final_fps = min(final_fps, cap_value)
-
-    elif not fighter_won and method_norm in ('ud', 'sd', 'md'):
-        final_fps = DECISION_LOSS
-
-    elif fighter_won and method_norm in ('ud', 'sd', 'md'):
-        final_fps = base_fps  # no override on decision wins — weighted RPS decides
-
-    else:
-        final_fps = base_fps
-
-    # Hard rule: winner always >= loser + 2
-    # (enforced at fight level in the batch processor)
-    final_fps = round(max(0, min(100, final_fps)), 2)
+    final_fps = round(max(0.0, min(100.0, final_fps)), 2)
 
     return FPSResult(
         fps=final_fps,
         fps_tier=get_fps_tier(final_fps),
         weighted_rps=round(weighted_rps, 2),
         cardio_45=round(cardio_45, 2) if cardio_45 is not None else None,
-        was_override_applied=override_value is not None,
-        override_base=override_value,
+        finish_quality_score=finish_quality_score,
+        floor_applied=floor_applied,
+        cap_applied=cap_applied,
         fight_total_seconds=total_seconds,
     )
