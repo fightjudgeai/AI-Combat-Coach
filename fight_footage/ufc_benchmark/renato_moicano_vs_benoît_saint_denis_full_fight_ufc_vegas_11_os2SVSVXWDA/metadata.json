@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "fe390d55-8144-49f5-b01c-03f8c6dfe8f2",
+    "f37a6655-1bda-4f1b-872e-42892ca9c365"
+  ],
+  "fighter_names": [
+    "Renato Moicano",
+    "Benoît Saint Denis"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=os2SVSVXWDA",
+  "is_benchmark": true,
+  "yt_title": "Renato Moicano vs Benoît Saint Denis | FULL FIGHT | UFC Vegas 115",
+  "yt_video_id": "os2SVSVXWDA",
+  "yt_upload_date": "20260330",
+  "yt_duration": 921
+}

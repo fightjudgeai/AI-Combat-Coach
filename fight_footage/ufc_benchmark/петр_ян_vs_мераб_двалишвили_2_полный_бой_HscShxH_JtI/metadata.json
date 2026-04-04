@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "f2200982-78a6-4bdf-91f1-5ef061f9d862",
+    "e68e0749-63fe-4949-8327-c7fa3f4563c6"
+  ],
+  "fighter_names": [
+    "Petr Yan",
+    "Merab Dvalishvili"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=HscShxH_JtI",
+  "is_benchmark": true,
+  "yt_title": "Петр Ян vs  Мераб Двалишвили 2 | Полный Бой",
+  "yt_video_id": "HscShxH_JtI",
+  "yt_upload_date": "20260220",
+  "yt_duration": 1676
+}

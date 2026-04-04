@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "4d4f2375-b86f-4bd3-a00a-17266dd7fc4a",
+    "4777df71-6d91-4392-8e98-72ceadc75401"
+  ],
+  "fighter_names": [
+    "Dustin Poirier",
+    "Dan Hooker"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=m3N1WuErSlg",
+  "is_benchmark": true,
+  "yt_title": "Dustin Poirier vs Dan Hooker | FULL FIGHT | UFC Classics",
+  "yt_video_id": "m3N1WuErSlg",
+  "yt_upload_date": "20251230",
+  "yt_duration": 1702
+}

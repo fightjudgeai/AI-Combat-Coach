@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "a0a28b82-986d-452b-adcd-b5dc56a91f35",
+    "8eabb315-3740-400a-ac51-d465922d84b3"
+  ],
+  "fighter_names": [
+    "TJ Dillashaw",
+    "Cody Garbrandt"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=2sDiRbsha4A",
+  "is_benchmark": true,
+  "yt_title": "TJ Dillashaw vs Cody Garbrandt 1 | FULL FIGHT | UFC Classics",
+  "yt_video_id": "2sDiRbsha4A",
+  "yt_upload_date": "20251218",
+  "yt_duration": 719
+}

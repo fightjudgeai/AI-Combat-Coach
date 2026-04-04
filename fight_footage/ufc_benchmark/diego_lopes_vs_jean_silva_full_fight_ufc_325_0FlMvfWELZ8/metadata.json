@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "3275a14c-4bb2-48f2-96f2-cd5030bd0e13",
+    "8dfd4fff-2368-4988-929d-b50c167a6005"
+  ],
+  "fighter_names": [
+    "Diego Lopes",
+    "Jean Silva"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=0FlMvfWELZ8",
+  "is_benchmark": true,
+  "yt_title": "Diego Lopes vs Jean Silva | FULL FIGHT | UFC 325",
+  "yt_video_id": "0FlMvfWELZ8",
+  "yt_upload_date": "20260126",
+  "yt_duration": 790
+}

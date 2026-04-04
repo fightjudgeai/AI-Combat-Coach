@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "fd04465a-dda3-4c20-bdde-32a9e17409d4",
+    "f3aa2331-4560-4d51-8b3d-24a9341630bc"
+  ],
+  "fighter_names": [
+    "Khamzat Chimaev",
+    "Kamaru Usman"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=-Ai-Qdew9wQ",
+  "is_benchmark": true,
+  "yt_title": "Khamzat Chimaev vs Kamaru Usman | FULL FIGHT | UFC 294",
+  "yt_video_id": "-Ai-Qdew9wQ",
+  "yt_upload_date": "20260108",
+  "yt_duration": 1049
+}

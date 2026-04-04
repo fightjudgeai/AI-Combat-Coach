@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    null,
+    null
+  ],
+  "fighter_names": [
+    "Unknown",
+    "Unknown"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=x0YxW2uF3Bo",
+  "is_benchmark": true,
+  "yt_title": "10 Fights GUARANTEED to Make You a Fight Fan - Full Fight Marathon",
+  "yt_video_id": "x0YxW2uF3Bo",
+  "yt_upload_date": "20240525",
+  "yt_duration": 13762
+}

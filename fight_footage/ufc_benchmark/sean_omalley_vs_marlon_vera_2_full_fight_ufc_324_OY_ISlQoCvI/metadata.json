@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "6b51bcbe-820e-4b80-b28b-03e4e64714c1",
+    "de3d0110-2f27-4c6f-a93c-fea47b56f193"
+  ],
+  "fighter_names": [
+    "Sean O'Malley",
+    "Marlon Vera"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=OY_ISlQoCvI",
+  "is_benchmark": true,
+  "yt_title": "Sean O'Malley vs Marlon Vera 2 | FULL FIGHT | UFC 324",
+  "yt_video_id": "OY_ISlQoCvI",
+  "yt_upload_date": "20260115",
+  "yt_duration": 1742
+}

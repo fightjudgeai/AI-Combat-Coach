@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "2f580698-7c0e-41f2-8110-695b960e3638",
+    "777f5756-82d7-4a0b-a869-6f6db6dc5d03"
+  ],
+  "fighter_names": [
+    "Conor McGregor",
+    "Max Holloway"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=BCOy-PG8EIw",
+  "is_benchmark": true,
+  "yt_title": "Conor McGregor vs Max Holloway | FULL FIGHT",
+  "yt_video_id": "BCOy-PG8EIw",
+  "yt_upload_date": "20231122",
+  "yt_duration": 959
+}

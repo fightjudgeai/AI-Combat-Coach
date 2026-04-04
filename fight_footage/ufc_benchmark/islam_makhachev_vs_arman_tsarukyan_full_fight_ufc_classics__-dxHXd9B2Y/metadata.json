@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "09e2fd3c-2474-49be-9316-4938e92434ea",
+    "c2ff598d-8d04-4919-b7ad-cc516067092e"
+  ],
+  "fighter_names": [
+    "Islam Makhachev",
+    "Arman Tsarukyan"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=_-dxHXd9B2Y",
+  "is_benchmark": true,
+  "yt_title": "Islam Makhachev vs Arman Tsarukyan | FULL FIGHT | UFC Classics",
+  "yt_video_id": "_-dxHXd9B2Y",
+  "yt_upload_date": "20260326",
+  "yt_duration": 963
+}

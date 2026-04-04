@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "80eb0a5c-ab17-4e1b-ae12-c1ce98309d36",
+    "1ab370de-aaf2-4f57-9c87-a6de126896bb"
+  ],
+  "fighter_names": [
+    "Alexander Volkanovski",
+    "Yair Rodriguez"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=La-ryOHYYw0",
+  "is_benchmark": true,
+  "yt_title": "Alexander Volkanovski vs Yair Rodriguez | FULL FIGHT | UFC 325",
+  "yt_video_id": "La-ryOHYYw0",
+  "yt_upload_date": "20260127",
+  "yt_duration": 1129
+}

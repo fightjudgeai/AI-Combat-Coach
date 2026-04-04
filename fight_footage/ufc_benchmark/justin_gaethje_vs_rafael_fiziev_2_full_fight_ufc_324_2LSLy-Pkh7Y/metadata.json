@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "3a1fb91b-3cc5-4d0f-9201-3c74d6374641",
+    "0ee22f8b-a30a-4b5c-a0cc-f1a3e185e139"
+  ],
+  "fighter_names": [
+    "Justin Gaethje",
+    "Rafael Fiziev"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=2LSLy-Pkh7Y",
+  "is_benchmark": true,
+  "yt_title": "Justin Gaethje vs Rafael Fiziev 2 | FULL FIGHT | UFC 324",
+  "yt_video_id": "2LSLy-Pkh7Y",
+  "yt_upload_date": "20260111",
+  "yt_duration": 1044
+}

@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "d5684cf0-e242-4ceb-bc30-dd0904db54e7",
+    "3d75c8bc-ce5d-4d21-a0d7-3c162b47414c"
+  ],
+  "fighter_names": [
+    "Paddy Pimblett",
+    "Michael Chandler"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=PCJBnCVlLQ0",
+  "is_benchmark": true,
+  "yt_title": "Paddy Pimblett vs Michael Chandler | FULL FIGHT | UFC 324",
+  "yt_video_id": "PCJBnCVlLQ0",
+  "yt_upload_date": "20260112",
+  "yt_duration": 996
+}

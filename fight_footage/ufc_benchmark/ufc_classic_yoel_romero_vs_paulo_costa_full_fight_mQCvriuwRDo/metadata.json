@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "c44c86c9-834b-4482-83cc-dde7ca6ee3bc",
+    "22018114-159c-4821-a772-74b91bdc1b24"
+  ],
+  "fighter_names": [
+    "Yoel Romero",
+    "Paulo Costa"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=mQCvriuwRDo",
+  "is_benchmark": true,
+  "yt_title": "UFC Classic: Yoel Romero vs Paulo Costa | FULL FIGHT",
+  "yt_video_id": "mQCvriuwRDo",
+  "yt_upload_date": "20240424",
+  "yt_duration": 935
+}

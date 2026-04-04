@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "42514a94-acf4-456d-a6ac-4ceaa7db0ae4",
+    "0e4105fc-a585-4265-aa63-1cd864e0808f"
+  ],
+  "fighter_names": [
+    "Georges St-Pierre",
+    "Nick Diaz"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=MB715WENxys",
+  "is_benchmark": true,
+  "yt_title": "Georges St-Pierre vs Nick Diaz | FULL FIGHT | UFC Classics",
+  "yt_video_id": "MB715WENxys",
+  "yt_upload_date": "20250826",
+  "yt_duration": 1707
+}

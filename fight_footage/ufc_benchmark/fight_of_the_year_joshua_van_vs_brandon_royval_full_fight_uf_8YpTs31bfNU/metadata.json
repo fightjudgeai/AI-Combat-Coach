@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "cd5cf87f-5cc7-4fe5-9461-3eb962531f52",
+    "a271c727-6e02-4b1e-8b91-8d0b8ee2dcfd"
+  ],
+  "fighter_names": [
+    "Joshua Van",
+    "Brandon Royval"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=8YpTs31bfNU",
+  "is_benchmark": true,
+  "yt_title": "FIGHT OF THE YEAR?? 🚨 | Joshua Van vs Brandon Royval | FULL FIGHT | UFC 323",
+  "yt_video_id": "8YpTs31bfNU",
+  "yt_upload_date": "20251127",
+  "yt_duration": 1031
+}

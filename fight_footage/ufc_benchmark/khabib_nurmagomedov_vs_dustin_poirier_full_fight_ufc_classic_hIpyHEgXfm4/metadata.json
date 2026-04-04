@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "405e68ed-02da-4e48-b141-845f388f030c",
+    "4d4f2375-b86f-4bd3-a00a-17266dd7fc4a"
+  ],
+  "fighter_names": [
+    "Khabib Nurmagomedov",
+    "Dustin Poirier"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=hIpyHEgXfm4",
+  "is_benchmark": true,
+  "yt_title": "Khabib Nurmagomedov vs Dustin Poirier | FULL FIGHT | UFC Classics",
+  "yt_video_id": "hIpyHEgXfm4",
+  "yt_upload_date": "20251226",
+  "yt_duration": 946
+}

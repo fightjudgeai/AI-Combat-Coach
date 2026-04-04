@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "398de9ac-8f9a-46b6-b0be-6d905957e1da",
+    "3a1fb91b-3cc5-4d0f-9201-3c74d6374641"
+  ],
+  "fighter_names": [
+    "Eddie Alvarez",
+    "Justin Gaethje"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=z4e8VupwS2w",
+  "is_benchmark": true,
+  "yt_title": "Eddie Alvarez vs Justin Gaethje | FULL FIGHT | UFC Classics",
+  "yt_video_id": "z4e8VupwS2w",
+  "yt_upload_date": "20241231",
+  "yt_duration": 985
+}

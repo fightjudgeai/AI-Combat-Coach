@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "fd04465a-dda3-4c20-bdde-32a9e17409d4",
+    "0806c1c9-34a7-41c9-90bd-7a3b8814c0c0"
+  ],
+  "fighter_names": [
+    "Khamzat Chimaev",
+    "Sean Strickland"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=MBYhhirPb7s",
+  "is_benchmark": true,
+  "yt_title": "Khamzat Chimaev vs Sean Strickland 🚨 | Full Fight Marathon",
+  "yt_video_id": "MBYhhirPb7s",
+  "yt_upload_date": "20260315",
+  "yt_duration": 8915
+}

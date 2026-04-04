@@ -1,0 +1,27 @@
+{
+  "fighter_ids": [
+    "f67c0113-e7bc-4510-aaaa-ff422027e274",
+    "4f459f08-aa7f-4404-849d-5b1f2c00e048"
+  ],
+  "fighter_names": [
+    "Jiri Prochazka",
+    "Khalil Rountree"
+  ],
+  "corner": [
+    "red",
+    "blue"
+  ],
+  "round_count": null,
+  "finish_method": null,
+  "tags": [
+    "free_fight",
+    "ufc",
+    "benchmark"
+  ],
+  "youtube_url": "https://www.youtube.com/watch?v=jScZixsd_EA",
+  "is_benchmark": true,
+  "yt_title": "Jiri Prochazka vs Khalil Rountree | FULL FIGHT | UFC 327",
+  "yt_video_id": "jScZixsd_EA",
+  "yt_upload_date": "20260329",
+  "yt_duration": 1051
+}
