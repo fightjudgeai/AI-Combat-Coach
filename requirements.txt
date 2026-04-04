@@ -16,6 +16,10 @@ boto3>=1.34                  # S3 download
 # Supabase
 supabase>=2.4.0
 
+# UFC stats scraper (ufc_data_pipeline)
+httpx>=0.27.0
+beautifulsoup4>=4.12
+
 # Optional: faster ONNX/TensorRT export (comment out if not needed)
 # onnx>=1.16
 # onnxruntime-gpu>=1.18
