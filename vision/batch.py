@@ -118,9 +118,13 @@ def run_batch(
             corner = (item.corner or ["red", "blue"])[idx] if item.corner else ("red" if idx == 0 else "blue")
 
             if dry_run:
-                print(
+                line = (
                     f"[DRY RUN] {item.fight_slug} | fighter={fighter_id} "
                     f"corner={corner} | source={source_str}"
+                )
+                enc = sys.stdout.encoding or "utf-8"
+                sys.stdout.write(
+                    line.encode(enc, errors="replace").decode(enc) + "\n"
                 )
                 continue
 
