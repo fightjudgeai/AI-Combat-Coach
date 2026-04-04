@@ -136,7 +136,7 @@ def update_fighter_attributes(fighter_id: str, attrs: Dict[str, Any]) -> None:
         patch["style_tags"] = merged_tags
 
     if patch:
-        client.table("fighters").update(patch).eq("id", fighter_id).execute()
+        client.table("fighters").update(_to_json_safe(patch)).eq("id", fighter_id).execute()
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +155,7 @@ def insert_events(
     if not events:
         return
     client = _get_client()
-    rows = [e.to_db_row(job_id, fighter_id) for e in events]
+    rows = [_to_json_safe(e.to_db_row(job_id, fighter_id)) for e in events]
     for i in range(0, len(rows), _BATCH_SIZE):
         client.table("fight_events").insert(rows[i:i + _BATCH_SIZE]).execute()
 
@@ -167,7 +167,7 @@ def upsert_summary(
 ) -> None:
     """Upsert a fight_event_summary row (unique on job_id + fighter_id)."""
     client = _get_client()
-    row = {"job_id": job_id, "fighter_id": fighter_id, **summary}
+    row = _to_json_safe({"job_id": job_id, "fighter_id": fighter_id, **summary})
     try:
         client.table("fight_event_summary").upsert(row, on_conflict="job_id,fighter_id").execute()
     except Exception as exc:
