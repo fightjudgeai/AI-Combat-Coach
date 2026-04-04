@@ -174,7 +174,7 @@ def upsert_summary(
         # If migration 007 hasn't been applied yet, the JSONB columns and
         # kicks_missed_head/body/leg won't exist.  Strip them and retry so
         # that the core stats are still persisted.
-        if "does not exist" in str(exc):
+        if "does not exist" in str(exc) or "PGRST204" in str(exc) or "Could not find" in str(exc):
             _MIG_007_COLS = {
                 "body_part_frames", "kinematic_features", "spatial_coverage",
                 "kicks_missed_head", "kicks_missed_body", "kicks_missed_leg",
