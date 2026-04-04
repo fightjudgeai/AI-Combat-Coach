@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Video & large binary files
+fight_footage/**/*.mp4
+fight_footage/**/*.avi
+fight_footage/**/*.mkv
+fight_footage/**/*.webm
+fight_footage/**/*.mov
+
+# Trained model binaries (track reports, not weights)
+models/*.pkl
+models/*.joblib
+models/*.pt
+models/*.pth
+
+# Raw data files
+data/
+*.csv
+*.parquet
+
+# Supabase local state
+supabase/.temp/
+supabase/cli-latest
+supabase/gotrue-version
+supabase/pooler-url
+supabase/postgres-version
+supabase/project-ref
+supabase/rest-version
+supabase/storage-migration
+supabase/storage-version
+
+# Environment / secrets
+.env
+.env.*
+*.secret
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
