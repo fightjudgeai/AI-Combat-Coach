@@ -128,6 +128,9 @@ def update_fighter_attributes(fighter_id: str, attrs: Dict[str, Any]) -> None:
                 "grappling_first", "late_round_fade", "finish_urgency"):
         val = attrs.get(col)
         if val is not None:
+            # NUMERIC(4,2) columns max out at 99.99 — clamp percentage values
+            if col in ("pressure_rating", "clinch_frequency", "finish_urgency"):
+                val = min(float(val), 99.99)
             patch[col] = val
 
     new_tags = attrs.get("style_tags") or []
