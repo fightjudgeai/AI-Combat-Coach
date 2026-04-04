@@ -4,8 +4,25 @@ Write computed style attributes, event log, and summary to Supabase.
 """
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, Dict, List, Optional
+
+log = logging.getLogger(__name__)
+
+
+def _to_json_safe(obj: Any) -> Any:
+    """Recursively convert numpy/non-native types to JSON-serialisable Python types."""
+    if isinstance(obj, dict):
+        return {k: _to_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_json_safe(v) for v in obj]
+    # numpy scalars expose .item(); numpy arrays expose .tolist()
+    if hasattr(obj, "item"):
+        return obj.item()
+    if hasattr(obj, "tolist"):
+        return obj.tolist()
+    return obj
 
 from supabase import create_client, Client
 
@@ -72,7 +89,7 @@ def complete_job(
         "status":         "done",
         "frames_sampled": frames_sampled,
         "duration_secs":  duration_secs,
-        "raw_attributes": raw_attributes,
+        "raw_attributes": _to_json_safe(raw_attributes),
     }).eq("id", job_id).execute()
 
 
@@ -151,4 +168,21 @@ def upsert_summary(
     """Upsert a fight_event_summary row (unique on job_id + fighter_id)."""
     client = _get_client()
     row = {"job_id": job_id, "fighter_id": fighter_id, **summary}
-    client.table("fight_event_summary").upsert(row, on_conflict="job_id,fighter_id").execute()
+    try:
+        client.table("fight_event_summary").upsert(row, on_conflict="job_id,fighter_id").execute()
+    except Exception as exc:
+        # If migration 007 hasn't been applied yet, the JSONB columns and
+        # kicks_missed_head/body/leg won't exist.  Strip them and retry so
+        # that the core stats are still persisted.
+        if "does not exist" in str(exc):
+            _MIG_007_COLS = {
+                "body_part_frames", "kinematic_features", "spatial_coverage",
+                "kicks_missed_head", "kicks_missed_body", "kicks_missed_leg",
+            }
+            stripped = {k: v for k, v in row.items() if k not in _MIG_007_COLS}
+            log.warning("Migration 007 not applied — retrying upsert without new columns")
+            client.table("fight_event_summary").upsert(
+                stripped, on_conflict="job_id,fighter_id"
+            ).execute()
+        else:
+            raise
