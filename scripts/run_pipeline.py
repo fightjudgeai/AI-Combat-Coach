@@ -306,7 +306,7 @@ def score_fight(fight_data: dict) -> dict | None:
         return None
 
     finish_seconds   = _parse_time_to_seconds(fight_data.get("finish_time"))
-    method_norm      = normalize_method(fight_data.get("method") or "")
+    method_norm      = normalize_method(fight_data.get("method"))
     is_finish        = method_norm in ("ko", "tko", "sub")
     winner_name      = fight_data.get("winner")
     fighter_a_won    = winner_name == fight_data["fighter_a_name"]
@@ -554,14 +554,17 @@ def stage_update_appearances(token: str | None) -> None:
     print("\n[APPEARANCES] Updating ufc_appearances counts ?")
     result = _mgmt_sql("""
         UPDATE ufc_fighters f
-        SET ufc_appearances = sub.cnt
+        SET ufc_appearances = counts.cnt
         FROM (
-            SELECT id,
-                   (SELECT COUNT(*) FROM ufc_fights
-                    WHERE fighter_a_id = id OR fighter_b_id = id) AS cnt
-            FROM ufc_fighters
-        ) sub
-        WHERE f.id = sub.id
+            SELECT fighter_id, COUNT(*) AS cnt
+            FROM (
+                SELECT fighter_a_id AS fighter_id FROM ufc_fights WHERE fighter_a_id IS NOT NULL
+                UNION ALL
+                SELECT fighter_b_id AS fighter_id FROM ufc_fights WHERE fighter_b_id IS NOT NULL
+            ) all_fighters
+            GROUP BY fighter_id
+        ) counts
+        WHERE f.id = counts.fighter_id
         RETURNING f.id
     """, token)
     print(f"[APPEARANCES] {len(result)} fighters updated")

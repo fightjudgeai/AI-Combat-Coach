@@ -6,7 +6,8 @@ import time
 from pathlib import Path
 
 BASE_URL = "http://ufcstats.com"
-CACHE_DIR = Path("./data/ufc_raw")
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent  # AI-Combat-Coach/
+CACHE_DIR = _REPO_ROOT / "data" / "ufc_raw"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 class UFCStatsScraper:
@@ -238,7 +239,7 @@ async def pull_all_ufc_data():
                 all_fights.append(fight_data)
             print(f"Processed event: {event['name']} ({len(fights)} fights)")
 
-        Path("./data/ufc_all_fights.json").write_text(json.dumps(all_fights, indent=2))
+        (_REPO_ROOT / "data" / "ufc_all_fights.json").write_text(json.dumps(all_fights, indent=2))
         print(f"Total fights pulled: {len(all_fights)}")
 
 

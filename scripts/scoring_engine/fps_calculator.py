@@ -85,8 +85,10 @@ def get_fps_tier(fps: float) -> str:
     return "POOR"
 
 
-def normalize_method(method: str) -> str:
-    """Map ufcstats method strings to normalised keys."""
+def normalize_method(method: str | None) -> str | None:
+    """Map ufcstats method strings to normalised keys. Returns None for unknown."""
+    if not method:
+        return None
     m = method.lower()
     if 'tko' in m or 'technical knockout' in m: return 'tko'
     if 'ko' in m or 'knockout' in m: return 'ko'
@@ -94,7 +96,9 @@ def normalize_method(method: str) -> str:
     if 'unanimous' in m: return 'ud'
     if 'split' in m: return 'sd'
     if 'majority' in m: return 'md'
-    return 'other'
+    if 'nc' in m or 'no contest' in m: return 'nc'
+    if 'dq' in m or 'disqualification' in m: return 'dq'
+    return None
 
 
 def calculate_fps(
