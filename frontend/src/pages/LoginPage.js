@@ -14,7 +14,7 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false);
 
   if (loading) return <LoadingScreen />;
-  if (user) return <Navigate to={user.role === 'fighter' ? '/fighter-portal' : '/dashboard'} />;
+  if (user) return <Navigate to={user.role === 'fighter' ? '/fighter-portal' : user.role === 'coach' ? '/coach-portal' : '/dashboard'} />;
 
   const handleSubmit = async (e) => {
     e.preventDefault();

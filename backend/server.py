@@ -317,6 +317,14 @@ class FighterProfileUpdateInput(BaseModel):
     emergency_contact: str = ""
     emergency_phone: str = ""
 
+class CoachRegisterInput(BaseModel):
+    email: str
+    password: str
+    name: str
+    gym: str = ""
+    phone: str = ""
+    specialization: str = ""
+
 # ── Auth Endpoints ──
 @api_router.post("/auth/register")
 async def register(input: RegisterInput, response: Response):
@@ -1634,6 +1642,110 @@ async def fighter_send_message(input: MessageInput, user: dict = Depends(get_cur
     doc["_id"] = str(res.inserted_id)
     return doc
 
+# ── Coach Portal ──
+@api_router.post("/auth/register-coach")
+async def register_coach(input: CoachRegisterInput, response: Response):
+    email = input.email.lower().strip()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    user_doc = {
+        "email": email, "password_hash": hash_password(input.password),
+        "name": input.name, "role": "coach",
+        "gym": input.gym, "phone": input.phone or "",
+        "specialization": input.specialization or "",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.users.insert_one(user_doc)
+    user_id = str(result.inserted_id)
+    access = create_access_token(user_id, email)
+    refresh = create_refresh_token(user_id)
+    set_auth_cookies(response, access, refresh)
+    return {"id": user_id, "email": email, "name": input.name, "role": "coach"}
+
+async def get_coach_fighters(user: dict) -> list:
+    gym = user.get("gym", "")
+    query = {"gym": gym} if gym else {"gym": {"$exists": False}}
+    result = []
+    async for f in db.fighters.find(query):
+        result.append(serialize_doc(f))
+    return result
+
+@api_router.get("/coach-portal/dashboard")
+async def coach_dashboard(user: dict = Depends(get_current_user)):
+    fighters = await get_coach_fighters(user)
+    fighter_ids = [f["_id"] for f in fighters]
+    upcoming_bouts = []
+    for fid in fighter_ids:
+        async for b in db.bouts.find({"$or": [{"fighter1_id": fid}, {"fighter2_id": fid}], "status": {"$in": ["scheduled", "in_progress"]}}):
+            bout = serialize_doc(b)
+            for key in ["fighter1_id", "fighter2_id"]:
+                try:
+                    f = await db.fighters.find_one({"_id": ObjectId(bout[key])})
+                    if f: bout[key.replace("_id", "_name")] = f.get("name", "TBD")
+                except Exception: pass
+            ev = await db.events.find_one({"_id": ObjectId(bout.get("event_id", ""))}) if bout.get("event_id") else None
+            bout["event_title"] = ev.get("title", "") if ev else ""
+            bout["event_date"] = ev.get("date", "") if ev else ""
+            if bout not in upcoming_bouts:
+                upcoming_bouts.append(bout)
+    active_suspensions = 0
+    for fid in fighter_ids:
+        active_suspensions += await db.medical_suspensions.count_documents({"fighter_id": fid, "cleared": False})
+    unread = await db.messages.count_documents({"to_id": user["_id"], "read": False})
+    return {
+        "coach_name": user.get("name", ""),
+        "gym": user.get("gym", ""),
+        "fighters": fighters,
+        "fighters_count": len(fighters),
+        "upcoming_bouts": upcoming_bouts,
+        "active_suspensions": active_suspensions,
+        "unread_messages": unread
+    }
+
+@api_router.get("/coach-portal/fighters")
+async def coach_fighters_list(user: dict = Depends(get_current_user)):
+    return await get_coach_fighters(user)
+
+@api_router.get("/coach-portal/bouts")
+async def coach_bouts(user: dict = Depends(get_current_user)):
+    fighters = await get_coach_fighters(user)
+    fighter_ids = [f["_id"] for f in fighters]
+    seen = set()
+    result = []
+    for fid in fighter_ids:
+        async for b in db.bouts.find({"$or": [{"fighter1_id": fid}, {"fighter2_id": fid}]}).sort("created_at", -1):
+            bout = serialize_doc(b)
+            if bout["_id"] in seen: continue
+            seen.add(bout["_id"])
+            for key in ["fighter1_id", "fighter2_id"]:
+                try:
+                    f = await db.fighters.find_one({"_id": ObjectId(bout[key])})
+                    if f: bout[key.replace("_id", "_name")] = f.get("name", "TBD")
+                except Exception: pass
+            ev = await db.events.find_one({"_id": ObjectId(bout.get("event_id", ""))}) if bout.get("event_id") else None
+            bout["event_title"] = ev.get("title", "") if ev else ""
+            bout["event_date"] = ev.get("date", "") if ev else ""
+            result.append(bout)
+    return result
+
+@api_router.get("/coach-portal/messages")
+async def coach_messages(user: dict = Depends(get_current_user)):
+    result = []
+    async for m in db.messages.find({"$or": [{"from_id": user["_id"]}, {"to_id": user["_id"]}, {"to_type": "broadcast"}]}).sort("created_at", -1).limit(50):
+        result.append(serialize_doc(m))
+    return result
+
+@api_router.post("/coach-portal/messages")
+async def coach_send_message(input: MessageInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["from_id"] = user["_id"]
+    doc["from_name"] = user.get("name", "")
+    doc["read"] = False
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.messages.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
 # ── Public Event Page (No Auth) ──
 @api_router.get("/public/events")
 async def public_events():
@@ -1770,6 +1882,13 @@ async def seed_admin():
             await db.fighters.update_one({"_id": first_fighter["_id"]}, {"$set": {"user_id": str(fu_res.inserted_id), "email": fighter_email}})
             logger.info(f"Fighter portal user seeded: {fighter_email}")
 
+    # Seed coach account
+    coach_email = "coach@fightjudge.com"
+    coach_pw = "Coach123!"
+    if not await db.users.find_one({"email": coach_email}):
+        await db.users.insert_one({"email": coach_email, "password_hash": hash_password(coach_pw), "name": "Coach Martinez", "role": "coach", "gym": "Iron Forge MMA", "phone": "555-0200", "specialization": "Striking & MMA", "created_at": datetime.now(timezone.utc).isoformat()})
+        logger.info(f"Coach portal user seeded: {coach_email}")
+
     # Seed officials
     if await db.officials.count_documents({}) == 0:
         officials = [
@@ -1803,6 +1922,12 @@ async def seed_admin():
 - Email: fighter@fightjudge.com
 - Password: Fighter123!
 - Role: fighter
+
+## Coach Portal Account
+- Email: coach@fightjudge.com
+- Password: Coach123!
+- Role: coach
+- Gym: Iron Forge MMA
 
 ## Auth Endpoints
 - POST /api/auth/register
