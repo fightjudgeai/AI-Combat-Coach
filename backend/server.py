@@ -691,7 +691,9 @@ async def create_ticket_checkout(input: TicketCheckoutInput, request: Request, u
     event = await db.events.find_one({"_id": ObjectId(input.event_id)})
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    amount = package["price"] * input.quantity
+    # Use dynamic pricing
+    pricing = await calculate_dynamic_price(input.event_id, input.package_id)
+    amount = pricing["dynamic_price"] * input.quantity
     origin = input.origin_url.rstrip("/")
     success_url = f"{origin}/tickets/success?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{origin}/tickets"
@@ -767,6 +769,184 @@ async def stripe_webhook(request: Request):
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         return {"status": "error"}
+
+# ── Dynamic Pricing ──
+async def calculate_dynamic_price(event_id: str, package_id: str) -> dict:
+    """Calculate dynamic price based on demand, scarcity, and urgency."""
+    base_price = TICKET_PACKAGES[package_id]["price"]
+    event = await db.events.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        return {"base_price": base_price, "dynamic_price": base_price, "multiplier": 1.0, "factors": {}}
+
+    # Factor 1: Scarcity (capacity utilization)
+    capacity = event.get("capacity", 0) or 1000
+    tickets_sold = await db.payment_transactions.count_documents({"metadata.event_id": event_id, "payment_status": "paid"})
+    utilization = tickets_sold / capacity if capacity > 0 else 0
+    if utilization >= 0.9:
+        scarcity_mult = 1.50
+    elif utilization >= 0.75:
+        scarcity_mult = 1.30
+    elif utilization >= 0.50:
+        scarcity_mult = 1.15
+    elif utilization >= 0.25:
+        scarcity_mult = 1.05
+    else:
+        scarcity_mult = 1.0
+
+    # Factor 2: Urgency (days to event)
+    try:
+        event_date = datetime.strptime(event.get("date", ""), "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        days_out = (event_date - datetime.now(timezone.utc)).days
+    except (ValueError, TypeError):
+        days_out = 30
+    if days_out < 0:
+        urgency_mult = 1.0  # Past events - no urgency adjustment
+    elif days_out <= 1:
+        urgency_mult = 1.40
+    elif days_out <= 3:
+        urgency_mult = 1.25
+    elif days_out <= 7:
+        urgency_mult = 1.15
+    elif days_out <= 14:
+        urgency_mult = 1.08
+    else:
+        urgency_mult = 1.0
+
+    # Factor 3: Sales velocity (tickets/day over last 7 days)
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    recent_sales = await db.payment_transactions.count_documents({
+        "metadata.event_id": event_id,
+        "payment_status": "paid",
+        "created_at": {"$gte": week_ago}
+    })
+    velocity = recent_sales / 7.0
+    if velocity >= 10:
+        velocity_mult = 1.25
+    elif velocity >= 5:
+        velocity_mult = 1.15
+    elif velocity >= 2:
+        velocity_mult = 1.05
+    elif velocity <= 0.5 and days_out > 14:
+        velocity_mult = 0.90  # Discount for slow sales
+    else:
+        velocity_mult = 1.0
+
+    # Combined multiplier with min/max bounds
+    raw_mult = scarcity_mult * urgency_mult * velocity_mult
+    final_mult = max(0.80, min(2.50, raw_mult))  # 80% to 250% of base
+    dynamic_price = round(base_price * final_mult, 2)
+
+    return {
+        "base_price": base_price,
+        "dynamic_price": dynamic_price,
+        "multiplier": round(final_mult, 3),
+        "factors": {
+            "scarcity": {"value": round(utilization * 100, 1), "multiplier": scarcity_mult, "label": f"{round(utilization * 100)}% capacity"},
+            "urgency": {"value": days_out, "multiplier": urgency_mult, "label": f"{days_out} days out"},
+            "velocity": {"value": round(velocity, 1), "multiplier": velocity_mult, "label": f"{round(velocity, 1)} tickets/day"},
+        },
+        "tickets_sold": tickets_sold,
+        "capacity": capacity,
+        "savings_or_surge": round((final_mult - 1.0) * 100, 1)
+    }
+
+@api_router.get("/tickets/dynamic-pricing/{event_id}")
+async def get_dynamic_pricing(event_id: str, user: dict = Depends(get_current_user)):
+    result = {}
+    for pkg_id in TICKET_PACKAGES:
+        result[pkg_id] = await calculate_dynamic_price(event_id, pkg_id)
+        result[pkg_id]["name"] = TICKET_PACKAGES[pkg_id]["name"]
+    return result
+
+@api_router.get("/tickets/sales-analytics/{event_id}")
+async def ticket_sales_analytics(event_id: str, user: dict = Depends(get_current_user)):
+    total_sold = await db.payment_transactions.count_documents({"metadata.event_id": event_id, "payment_status": "paid"})
+    total_revenue = 0
+    by_package = {}
+    daily_sales = {}
+    async for t in db.payment_transactions.find({"metadata.event_id": event_id, "payment_status": "paid"}):
+        total_revenue += t.get("amount", 0)
+        pkg = t.get("package_id", "unknown")
+        by_package[pkg] = by_package.get(pkg, 0) + 1
+        day = t.get("created_at", "")[:10]
+        if day:
+            daily_sales[day] = daily_sales.get(day, 0) + 1
+    event = await db.events.find_one({"_id": ObjectId(event_id)})
+    capacity = event.get("capacity", 0) if event else 0
+    return {
+        "total_sold": total_sold,
+        "total_revenue": total_revenue,
+        "capacity": capacity,
+        "utilization": round((total_sold / capacity * 100) if capacity > 0 else 0, 1),
+        "by_package": [{"package": TICKET_PACKAGES.get(k, {}).get("name", k), "count": v} for k, v in by_package.items()],
+        "daily_sales": [{"date": k, "count": v} for k, v in sorted(daily_sales.items())],
+    }
+
+class PricingConfigInput(BaseModel):
+    event_id: str
+    min_multiplier: float = 0.80
+    max_multiplier: float = 2.50
+    auto_adjust: bool = True
+
+@api_router.post("/tickets/pricing-config")
+async def save_pricing_config(input: PricingConfigInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["updated_by"] = user["_id"]
+    doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.pricing_configs.update_one(
+        {"event_id": input.event_id},
+        {"$set": doc},
+        upsert=True
+    )
+    return {"message": "Pricing config saved"}
+
+@api_router.get("/tickets/pricing-config/{event_id}")
+async def get_pricing_config(event_id: str, user: dict = Depends(get_current_user)):
+    config = await db.pricing_configs.find_one({"event_id": event_id}, {"_id": 0})
+    if not config:
+        return {"event_id": event_id, "min_multiplier": 0.80, "max_multiplier": 2.50, "auto_adjust": True}
+    return config
+
+@api_router.post("/ai/pricing-recommendations")
+async def ai_pricing_recommendations(event_id: str, user: dict = Depends(get_current_user)):
+    event = await db.events.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    pricing = {}
+    for pkg_id in TICKET_PACKAGES:
+        pricing[pkg_id] = await calculate_dynamic_price(event_id, pkg_id)
+    total_sold = await db.payment_transactions.count_documents({"metadata.event_id": event_id, "payment_status": "paid"})
+    total_revenue = 0
+    async for t in db.payment_transactions.find({"metadata.event_id": event_id, "payment_status": "paid"}):
+        total_revenue += t.get("amount", 0)
+    try:
+        chat = LlmChat(
+            api_key=os.environ.get("EMERGENT_LLM_KEY", ""),
+            session_id=f"pricing-{uuid.uuid4()}",
+            system_message="You are a ticket pricing strategist for combat sports events. Analyze the data and provide specific pricing recommendations to maximize revenue. Be concise and actionable."
+        )
+        prompt = f"""Analyze this event's ticket pricing and recommend adjustments:
+
+Event: {event.get('title')} on {event.get('date')} at {event.get('venue')}, {event.get('city')}
+Capacity: {event.get('capacity', 0)}
+Tickets Sold: {total_sold}
+Revenue So Far: ${total_revenue:,.2f}
+
+Current Dynamic Pricing:
+- General: ${pricing['general']['dynamic_price']} (base: ${pricing['general']['base_price']}, {pricing['general']['savings_or_surge']}% adjustment)
+- VIP: ${pricing['vip']['dynamic_price']} (base: ${pricing['vip']['base_price']}, {pricing['vip']['savings_or_surge']}% adjustment)
+- Ringside: ${pricing['ringside']['dynamic_price']} (base: ${pricing['ringside']['base_price']}, {pricing['ringside']['savings_or_surge']}% adjustment)
+- PPV: ${pricing['ppv']['dynamic_price']} (base: ${pricing['ppv']['base_price']}, {pricing['ppv']['savings_or_surge']}% adjustment)
+
+Factors: Scarcity={pricing['general']['factors']['scarcity']['label']}, Urgency={pricing['general']['factors']['urgency']['label']}, Velocity={pricing['general']['factors']['velocity']['label']}
+
+Provide: 1) Overall pricing assessment 2) Package-specific recommendations 3) Revenue optimization strategies 4) Projected revenue at current trajectory"""
+        msg = UserMessage(text=prompt)
+        result = await chat.send_message(msg)
+        return {"recommendations": result, "current_pricing": pricing, "total_sold": total_sold, "total_revenue": total_revenue}
+    except Exception as e:
+        logger.error(f"AI pricing recommendation error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate pricing recommendations")
 
 # ── AI Endpoints ──
 @api_router.post("/ai/generate-promo")
