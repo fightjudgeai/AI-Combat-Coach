@@ -13,7 +13,7 @@ export default function RegisterPage() {
   const [showPw, setShowPw] = useState(false);
 
   if (loading) return null;
-  if (user) return <Navigate to="/dashboard" />;
+  if (user) return <Navigate to={user.role === 'fighter' ? '/fighter-portal' : '/dashboard'} />;
 
   const handleSubmit = async (e) => {
     e.preventDefault();

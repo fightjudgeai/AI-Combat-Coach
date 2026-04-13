@@ -530,9 +530,133 @@ class FightJudgeProTester:
         
         return all([events_success, fighters_success, sponsors_success, tasks_success, financials_success])
 
+    def test_fighter_portal_features(self):
+        """Test Fighter Portal specific features"""
+        print("\n🥊 FIGHTER PORTAL FEATURES")
+        
+        # Test fighter login
+        fighter_login = self.run_test(
+            "Fighter Login",
+            "POST",
+            "auth/login",
+            200,
+            data={"email": "fighter@fightjudge.com", "password": "Fighter123!"},
+            auth_required=False
+        )
+        
+        if not fighter_login[0]:
+            print("❌ Fighter login failed - skipping fighter portal tests")
+            return False
+            
+        # Test fighter dashboard
+        dashboard = self.run_test(
+            "Fighter Dashboard",
+            "GET", 
+            "fighter-portal/dashboard",
+            200
+        )
+        
+        # Test fighter profile
+        profile = self.run_test(
+            "Fighter Profile",
+            "GET",
+            "fighter-portal/profile", 
+            200
+        )
+        
+        # Test profile update
+        profile_update = self.run_test(
+            "Fighter Profile Update",
+            "PUT",
+            "fighter-portal/profile",
+            200,
+            data={
+                "name": "Marcus Johnson",
+                "nickname": "The Hammer", 
+                "weight_class": "Welterweight",
+                "gym": "Updated Gym"
+            }
+        )
+        
+        # Test fighter messages
+        messages = self.run_test(
+            "Fighter Messages",
+            "GET",
+            "fighter-portal/messages",
+            200
+        )
+        
+        # Test send message
+        send_message = self.run_test(
+            "Send Fighter Message",
+            "POST", 
+            "fighter-portal/messages",
+            200,
+            data={
+                "to_type": "broadcast",
+                "to_id": "",
+                "to_name": "Promoter",
+                "subject": "Test Message",
+                "body": "Test message from fighter portal"
+            }
+        )
+        
+        # Test fighter bouts
+        bouts = self.run_test(
+            "Fighter Bouts",
+            "GET",
+            "fighter-portal/bouts",
+            200
+        )
+        
+        # Test fighter medicals
+        medicals = self.run_test(
+            "Fighter Medicals", 
+            "GET",
+            "fighter-portal/medicals",
+            200
+        )
+        
+        # Test fighter contracts
+        contracts = self.run_test(
+            "Fighter Contracts",
+            "GET", 
+            "fighter-portal/contracts",
+            200
+        )
+        
+        # Test fighter payments
+        payments = self.run_test(
+            "Fighter Payments",
+            "GET",
+            "fighter-portal/payments", 
+            200
+        )
+        
+        # Test fighter registration endpoint
+        test_email = f"testfighter_{datetime.now().strftime('%H%M%S')}@test.com"
+        fighter_register = self.run_test(
+            "Fighter Registration",
+            "POST",
+            "auth/register-fighter",
+            200,
+            data={
+                "email": test_email,
+                "password": "TestPass123!",
+                "name": "Test Fighter",
+                "nickname": "The Test",
+                "weight_class": "Welterweight",
+                "gym": "Test Gym"
+            },
+            auth_required=False
+        )
+        
+        return all([dashboard[0], profile[0], profile_update[0], messages[0], send_message[0], 
+                   bouts[0], medicals[0], contracts[0], payments[0], fighter_register[0]])
+
 def main():
-    print("🥊 FightJudge Pro Phase 4 Backend API Testing")
-    print("=" * 50)
+    print("🥊 FightJudge Pro Phase 5 Fighter Portal Backend API Testing")
+    print("=" * 60)
     
     tester = FightJudgeProTester()
     
@@ -547,7 +671,10 @@ def main():
     # Test dashboard
     dashboard_success = tester.test_dashboard_stats()
     
-    # Test new Phase 4 modules
+    # Test Fighter Portal features (Phase 5)
+    fighter_portal_success = tester.test_fighter_portal_features()
+    
+    # Test Phase 4 modules
     officials_success = tester.test_officials_crud()
     venues_success = tester.test_venues_crud()
     compliance_success = tester.test_compliance_dashboard()
@@ -561,9 +688,9 @@ def main():
     previous_success = tester.test_previous_features()
     
     # Print summary
-    print("\n" + "=" * 50)
+    print("\n" + "=" * 60)
     print("📊 TEST SUMMARY")
-    print("=" * 50)
+    print("=" * 60)
     print(f"Tests Run: {tester.tests_run}")
     print(f"Tests Passed: {tester.tests_passed}")
     print(f"Tests Failed: {tester.tests_run - tester.tests_passed}")
@@ -580,6 +707,7 @@ def main():
         'Authentication': tester.test_login(),
         'Public Events': public_success,
         'Dashboard': dashboard_success,
+        'Fighter Portal (Phase 5)': fighter_portal_success,
         'Officials': officials_success,
         'Venues': venues_success,
         'Compliance': compliance_success,

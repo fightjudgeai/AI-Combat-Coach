@@ -14,7 +14,7 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false);
 
   if (loading) return <LoadingScreen />;
-  if (user) return <Navigate to="/dashboard" />;
+  if (user) return <Navigate to={user.role === 'fighter' ? '/fighter-portal' : '/dashboard'} />;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -102,6 +102,9 @@ export default function LoginPage() {
           <p className="mt-8 text-center text-zinc-500">
             Don't have an account?{' '}
             <a href="/register" data-testid="go-to-register" className="text-[#DC2626] font-semibold hover:underline">Register</a>
+          </p>
+          <p className="mt-2 text-center">
+            <a href="/register?role=fighter" data-testid="go-to-fighter-register" className="text-[#D4AF37] font-semibold text-sm hover:underline">Fighter? Register for Portal</a>
           </p>
         </div>
       </div>

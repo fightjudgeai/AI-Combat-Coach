@@ -294,6 +294,29 @@ class CampaignInput(BaseModel):
     scheduled_at: str = ""
     status: str = "draft"  # draft, scheduled, sent, cancelled
 
+class FighterRegisterInput(BaseModel):
+    email: str
+    password: str
+    name: str
+    nickname: str = ""
+    weight_class: str = "Welterweight"
+    gym: str = ""
+    phone: str = ""
+
+class FighterProfileUpdateInput(BaseModel):
+    name: str = ""
+    nickname: str = ""
+    weight_class: str = ""
+    age: int = 0
+    height: str = ""
+    reach: str = ""
+    stance: str = "orthodox"
+    gym: str = ""
+    phone: str = ""
+    bio: str = ""
+    emergency_contact: str = ""
+    emergency_phone: str = ""
+
 # ── Auth Endpoints ──
 @api_router.post("/auth/register")
 async def register(input: RegisterInput, response: Response):
@@ -1449,6 +1472,168 @@ async def generate_campaign_content(campaign_id: str, user: dict = Depends(get_c
         logger.error(f"Campaign content generation error: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate content")
 
+# ── Fighter Portal ──
+@api_router.post("/auth/register-fighter")
+async def register_fighter(input: FighterRegisterInput, response: Response):
+    email = input.email.lower().strip()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    user_doc = {
+        "email": email, "password_hash": hash_password(input.password),
+        "name": input.name, "role": "fighter",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.users.insert_one(user_doc)
+    user_id = str(result.inserted_id)
+    fighter_doc = {
+        "name": input.name, "nickname": input.nickname,
+        "weight_class": input.weight_class, "wins": 0, "losses": 0, "draws": 0,
+        "status": "active", "age": 0, "height": "", "reach": "",
+        "stance": "orthodox", "gym": input.gym,
+        "user_id": user_id, "email": email, "phone": input.phone or "",
+        "bio": "", "emergency_contact": "", "emergency_phone": "",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    fighter_result = await db.fighters.insert_one(fighter_doc)
+    access = create_access_token(user_id, email)
+    refresh = create_refresh_token(user_id)
+    set_auth_cookies(response, access, refresh)
+    return {"id": user_id, "email": email, "name": input.name, "role": "fighter", "fighter_id": str(fighter_result.inserted_id)}
+
+async def get_fighter_for_user(user: dict) -> dict:
+    fighter = await db.fighters.find_one({"user_id": user["_id"]})
+    if not fighter:
+        fighter = await db.fighters.find_one({"email": user.get("email", "")})
+    if not fighter:
+        raise HTTPException(status_code=404, detail="No fighter profile linked to this account")
+    return serialize_doc(fighter)
+
+@api_router.get("/fighter-portal/dashboard")
+async def fighter_dashboard(user: dict = Depends(get_current_user)):
+    fighter = await get_fighter_for_user(user)
+    fighter_id = fighter["_id"]
+    upcoming_bouts = []
+    async for b in db.bouts.find({"$or": [{"fighter1_id": fighter_id}, {"fighter2_id": fighter_id}], "status": {"$in": ["scheduled", "in_progress"]}}).sort("created_at", -1):
+        bout = serialize_doc(b)
+        for key in ["fighter1_id", "fighter2_id"]:
+            try:
+                f = await db.fighters.find_one({"_id": ObjectId(bout[key])})
+                if f:
+                    bout[key.replace("_id", "_name")] = f.get("name", "TBD")
+            except Exception:
+                pass
+        ev = await db.events.find_one({"_id": ObjectId(bout.get("event_id", ""))}) if bout.get("event_id") else None
+        bout["event_title"] = ev.get("title", "") if ev else ""
+        bout["event_date"] = ev.get("date", "") if ev else ""
+        bout["event_venue"] = ev.get("venue", "") if ev else ""
+        upcoming_bouts.append(bout)
+    active_suspensions = await db.medical_suspensions.count_documents({"fighter_id": fighter_id, "cleared": False})
+    pending_clearances = await db.fighter_medicals.count_documents({"fighter_id": fighter_id, "result": "pending"})
+    contracts_pending = await db.fighter_contracts.count_documents({"fighter_id": fighter_id, "status": "pending"})
+    total_earnings = 0
+    async for c in db.fighter_contracts.find({"fighter_id": fighter_id, "status": {"$in": ["active", "completed"]}}):
+        total_earnings += c.get("purse", 0) + c.get("win_bonus", 0)
+    unread_msgs = await db.messages.count_documents({"to_id": user["_id"], "read": False})
+    return {
+        "fighter": fighter,
+        "upcoming_bouts": upcoming_bouts,
+        "record": f"{fighter.get('wins',0)}-{fighter.get('losses',0)}-{fighter.get('draws',0)}",
+        "active_suspensions": active_suspensions,
+        "pending_clearances": pending_clearances,
+        "contracts_pending": contracts_pending,
+        "total_earnings": total_earnings,
+        "unread_messages": unread_msgs
+    }
+
+@api_router.get("/fighter-portal/bouts")
+async def fighter_bouts(user: dict = Depends(get_current_user)):
+    fighter = await get_fighter_for_user(user)
+    fighter_id = fighter["_id"]
+    result = []
+    async for b in db.bouts.find({"$or": [{"fighter1_id": fighter_id}, {"fighter2_id": fighter_id}]}).sort("created_at", -1):
+        bout = serialize_doc(b)
+        for key in ["fighter1_id", "fighter2_id"]:
+            try:
+                f = await db.fighters.find_one({"_id": ObjectId(bout[key])})
+                if f: bout[key.replace("_id", "_name")] = f.get("name", "TBD")
+            except Exception: pass
+        ev = await db.events.find_one({"_id": ObjectId(bout.get("event_id", ""))}) if bout.get("event_id") else None
+        bout["event_title"] = ev.get("title", "") if ev else ""
+        bout["event_date"] = ev.get("date", "") if ev else ""
+        result.append(bout)
+    return result
+
+@api_router.get("/fighter-portal/medicals")
+async def fighter_medicals(user: dict = Depends(get_current_user)):
+    fighter = await get_fighter_for_user(user)
+    result = []
+    async for m in db.fighter_medicals.find({"fighter_id": fighter["_id"]}).sort("date", -1):
+        result.append(serialize_doc(m))
+    suspensions = []
+    async for s in db.medical_suspensions.find({"fighter_id": fighter["_id"]}).sort("end_date", -1):
+        suspensions.append(serialize_doc(s))
+    return {"clearances": result, "suspensions": suspensions}
+
+@api_router.get("/fighter-portal/contracts")
+async def fighter_contracts_portal(user: dict = Depends(get_current_user)):
+    fighter = await get_fighter_for_user(user)
+    result = []
+    async for c in db.fighter_contracts.find({"fighter_id": fighter["_id"]}).sort("created_at", -1):
+        contract = serialize_doc(c)
+        if contract.get("event_id"):
+            ev = await db.events.find_one({"_id": ObjectId(contract["event_id"])})
+            contract["event_title"] = ev.get("title", "") if ev else ""
+        result.append(contract)
+    return result
+
+@api_router.get("/fighter-portal/payments")
+async def fighter_payments(user: dict = Depends(get_current_user)):
+    fighter = await get_fighter_for_user(user)
+    result = []
+    async for c in db.fighter_contracts.find({"fighter_id": fighter["_id"], "status": {"$in": ["active", "completed"]}}).sort("created_at", -1):
+        contract = serialize_doc(c)
+        if contract.get("event_id"):
+            ev = await db.events.find_one({"_id": ObjectId(contract["event_id"])})
+            contract["event_title"] = ev.get("title", "") if ev else ""
+        result.append(contract)
+    total = sum(c.get("purse", 0) + c.get("win_bonus", 0) for c in result)
+    return {"payments": result, "total_earnings": total}
+
+@api_router.get("/fighter-portal/profile")
+async def fighter_profile_get(user: dict = Depends(get_current_user)):
+    fighter = await get_fighter_for_user(user)
+    return fighter
+
+@api_router.put("/fighter-portal/profile")
+async def fighter_profile_update(input: FighterProfileUpdateInput, user: dict = Depends(get_current_user)):
+    fighter = await get_fighter_for_user(user)
+    updates = {}
+    for k, v in input.model_dump().items():
+        if v or (isinstance(v, int) and v >= 0):
+            updates[k] = v
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.fighters.update_one({"_id": ObjectId(fighter["_id"])}, {"$set": updates})
+    f = await db.fighters.find_one({"_id": ObjectId(fighter["_id"])})
+    return serialize_doc(f)
+
+@api_router.get("/fighter-portal/messages")
+async def fighter_messages(user: dict = Depends(get_current_user)):
+    result = []
+    async for m in db.messages.find({"$or": [{"from_id": user["_id"]}, {"to_id": user["_id"]}, {"to_type": "broadcast"}]}).sort("created_at", -1).limit(50):
+        result.append(serialize_doc(m))
+    return result
+
+@api_router.post("/fighter-portal/messages")
+async def fighter_send_message(input: MessageInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["from_id"] = user["_id"]
+    doc["from_name"] = user.get("name", "")
+    doc["read"] = False
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.messages.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
 # ── Public Event Page (No Auth) ──
 @api_router.get("/public/events")
 async def public_events():
@@ -1574,6 +1759,17 @@ async def seed_admin():
     await db.users.create_index("email", unique=True)
     await db.login_attempts.create_index("identifier")
 
+    # Link a sample fighter to a user account for portal demo
+    fighter_email = "fighter@fightjudge.com"
+    fighter_pw = "Fighter123!"
+    existing_fu = await db.users.find_one({"email": fighter_email})
+    if not existing_fu:
+        first_fighter = await db.fighters.find_one({})
+        if first_fighter:
+            fu_res = await db.users.insert_one({"email": fighter_email, "password_hash": hash_password(fighter_pw), "name": first_fighter["name"], "role": "fighter", "created_at": datetime.now(timezone.utc).isoformat()})
+            await db.fighters.update_one({"_id": first_fighter["_id"]}, {"$set": {"user_id": str(fu_res.inserted_id), "email": fighter_email}})
+            logger.info(f"Fighter portal user seeded: {fighter_email}")
+
     # Seed officials
     if await db.officials.count_documents({}) == 0:
         officials = [
@@ -1603,12 +1799,29 @@ async def seed_admin():
 - Password: {admin_password}
 - Role: admin
 
+## Fighter Portal Account
+- Email: fighter@fightjudge.com
+- Password: Fighter123!
+- Role: fighter
+
 ## Auth Endpoints
 - POST /api/auth/register
 - POST /api/auth/login
 - POST /api/auth/logout
 - GET /api/auth/me
 - POST /api/auth/refresh
+- POST /api/auth/register-fighter
+
+## Fighter Portal Endpoints
+- GET /api/fighter-portal/dashboard
+- GET /api/fighter-portal/bouts
+- GET /api/fighter-portal/medicals
+- GET /api/fighter-portal/contracts
+- GET /api/fighter-portal/payments
+- GET /api/fighter-portal/profile
+- PUT /api/fighter-portal/profile
+- GET /api/fighter-portal/messages
+- POST /api/fighter-portal/messages
 """)
 
 @app.on_event("startup")
