@@ -13,10 +13,10 @@ export default function ChecklistsPage() {
   const [applyResult, setApplyResult] = useState(null);
 
   const load = () => {
-    api.get('/checklists/templates').then(r => setTemplates(r.data));
-    api.get('/events').then(r => setEvents(r.data));
+    api.get('/checklists/templates').then(r => setTemplates(r.data)).catch(e => console.error('Failed to load templates:', e));
+    api.get('/events').then(r => setEvents(r.data)).catch(e => console.error('Failed to load events:', e));
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [api]);
 
   const applyTemplate = async (templateId) => {
     if (!applyEvent) { alert('Please select an event first'); return; }
