@@ -23,3 +23,9 @@ beautifulsoup4>=4.12
 # Optional: faster ONNX/TensorRT export (comment out if not needed)
 # onnx>=1.16
 # onnxruntime-gpu>=1.18
+
+# Coach Portal web app
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+jinja2>=3.1.0
+python-multipart>=0.0.9

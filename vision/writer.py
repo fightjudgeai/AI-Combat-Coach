@@ -30,8 +30,13 @@ from .events import FightEvent
 
 
 def _get_client() -> Client:
-    url = os.environ["SUPABASE_URL"]
-    key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    url = os.environ.get("SUPABASE_URL", "")
+    key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not url or not key:
+        missing = []
+        if not url: missing.append("SUPABASE_URL")
+        if not key: missing.append("SUPABASE_SERVICE_KEY / SUPABASE_SERVICE_ROLE_KEY")
+        raise RuntimeError(f"Missing required environment variable(s): {', '.join(missing)}")
     return create_client(url, key)
 
 

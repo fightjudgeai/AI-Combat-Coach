@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block page_actions %}
+<a href="/fighters?{{ request.query_params }}"
+   class="hidden lg:inline-flex items-center gap-2 text-xs text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 rounded-lg px-3 py-1.5 transition-colors">
+  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+  </svg>
+  Refresh
+</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Filters ─────────────────────────────────────────────────────────────── -->
+<form method="get" action="/fighters" class="mb-6 space-y-3">
+
+  <!-- Search bar -->
+  <div class="relative">
+    <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
+    </svg>
+    <input type="text" name="q" value="{{ q }}" placeholder="Search fighters…"
+           class="w-full pl-10 pr-4 py-2.5 bg-gray-800 border border-gray-700 text-gray-100 placeholder-gray-500 rounded-xl text-sm
+                  focus:outline-none focus:ring-2 focus:ring-red-500/40 focus:border-red-500/60 transition-all" />
+  </div>
+
+  <!-- Filter row -->
+  <div class="flex flex-wrap gap-2">
+
+    <!-- Weight class -->
+    <select name="weight_class"
+            class="bg-gray-800 border border-gray-700 text-sm text-gray-300 rounded-lg px-3 py-2
+                   focus:outline-none focus:ring-2 focus:ring-red-500/40 focus:border-red-500/60">
+      <option value="">All weight classes</option>
+      {% for wc in weight_classes %}
+      <option value="{{ wc }}" {% if weight_class == wc %}selected{% endif %}>{{ wc }}</option>
+      {% endfor %}
+    </select>
+
+    <!-- Style archetype -->
+    <select name="archetype"
+            class="bg-gray-800 border border-gray-700 text-sm text-gray-300 rounded-lg px-3 py-2
+                   focus:outline-none focus:ring-2 focus:ring-red-500/40 focus:border-red-500/60">
+      <option value="">All archetypes</option>
+      {% for a in archetypes %}
+      <option value="{{ a }}" {% if archetype == a %}selected{% endif %}>{{ a | replace('_', ' ') | title }}</option>
+      {% endfor %}
+    </select>
+
+    <!-- FPS tier -->
+    <select name="tier"
+            class="bg-gray-800 border border-gray-700 text-sm text-gray-300 rounded-lg px-3 py-2
+                   focus:outline-none focus:ring-2 focus:ring-red-500/40 focus:border-red-500/60">
+      <option value="">All tiers</option>
+      {% for t in tiers %}
+      <option value="{{ t }}" {% if tier == t %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+
+    <!-- Submit -->
+    <button type="submit"
+            class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors">
+      Filter
+    </button>
+
+    {% if q or weight_class or archetype or tier %}
+    <a href="/fighters" class="px-3 py-2 text-sm text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 rounded-lg transition-colors">
+      Clear
+    </a>
+    {% endif %}
+
+  </div>
+</form>
+
+<!-- Results count -->
+<div class="flex items-center justify-between mb-4">
+  <p class="text-sm text-gray-400">
+    {% if total > 0 %}
+      Showing <span class="text-gray-200 font-medium">{{ fighters | length }}</span> of
+      <span class="text-gray-200 font-medium">{{ "{:,}".format(total) }}</span> fighters
+    {% else %}
+      No fighters found
+    {% endif %}
+  </p>
+  {% if total_pages > 1 %}
+  <span class="text-xs text-gray-600">Page {{ page }} / {{ total_pages }}</span>
+  {% endif %}
+</div>
+
+<!-- ── Fighter grid ────────────────────────────────────────────────────────── -->
+{% if fighters %}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
+  {% for f in fighters %}
+  <a href="/fighters/{{ f.id }}"
+     class="group bg-gray-800 border border-gray-700/50 rounded-xl p-4 hover:border-gray-600 hover:bg-gray-750 transition-all flex flex-col gap-3">
+
+    <!-- Name + weight class -->
+    <div>
+      <h3 class="text-sm font-semibold text-gray-100 group-hover:text-white leading-tight">{{ f.name }}</h3>
+      <p class="text-xs text-gray-500 mt-0.5">{{ f.weight_class or '—' }}</p>
+    </div>
+
+    <!-- FPS score + tier -->
+    <div class="flex items-end justify-between">
+      <div>
+        <div class="text-2xl font-bold {{ f.career_fps | fps_color }}">{{ f.career_fps | fmt_fps }}</div>
+        <div class="text-[10px] text-gray-600 mt-0.5">FPS Score</div>
+      </div>
+      {% if f.career_fps_tier %}
+      <span class="text-[10px] font-bold px-2 py-0.5 rounded {{ f.career_fps | fps_color }}
+                   bg-current/10 border border-current/20 opacity-80">
+        {{ f.career_fps | fps_tier }}
+      </span>
+      {% endif %}
+    </div>
+
+    <!-- FPS bar -->
+    <div class="h-1 bg-gray-700 rounded-full overflow-hidden">
+      <div class="h-full rounded-full fps-bar-fill {{ f.career_fps | fps_bar_color }}"
+           style="width: {{ [[(f.career_fps or 0)|float, 0]|max, 100]|min }}%"></div>
+    </div>
+
+    <!-- Record + style -->
+    <div class="flex items-center justify-between">
+      <span class="text-xs text-gray-400 font-medium">
+        {{ f.ufc_wins }}-{{ f.ufc_losses }}{% if f.ufc_draws %}-{{ f.ufc_draws }}{% endif %}
+        <span class="text-gray-600 font-normal ml-1">({{ f.ufc_appearances }} fights)</span>
+      </span>
+      {% if f.style_archetype %}
+      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium border {{ f.style_archetype | archetype_style }}">
+        {{ f.style_archetype | replace('_', ' ') | title }}
+      </span>
+      {% endif %}
+    </div>
+
+    {% if f.finish_rate %}
+    <div class="text-[11px] text-gray-500">
+      Finish rate: <span class="text-gray-300 font-medium">{{ (f.finish_rate * 100) | round | int }}%</span>
+      {% if f.ko_rate %} · KO <span class="text-gray-300">{{ (f.ko_rate * 100) | round | int }}%</span>{% endif %}
+      {% if f.sub_rate %} · Sub <span class="text-gray-300">{{ (f.sub_rate * 100) | round | int }}%</span>{% endif %}
+    </div>
+    {% endif %}
+
+  </a>
+  {% endfor %}
+</div>
+
+<!-- ── Pagination ──────────────────────────────────────────────────────────── -->
+{% if total_pages > 1 %}
+<div class="flex items-center justify-center gap-2">
+  {% if page > 1 %}
+  <a href="/fighters?q={{ q }}&weight_class={{ weight_class }}&archetype={{ archetype }}&tier={{ tier }}&page={{ page - 1 }}"
+     class="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 hover:border-gray-600 rounded-lg transition-colors">
+    ← Prev
+  </a>
+  {% endif %}
+
+  {% for p in range([1, page-2]|max, [total_pages+1, page+3]|min) %}
+  <a href="/fighters?q={{ q }}&weight_class={{ weight_class }}&archetype={{ archetype }}&tier={{ tier }}&page={{ p }}"
+     class="px-3 py-1.5 text-sm rounded-lg transition-colors
+            {% if p == page %}bg-red-600 text-white{% else %}text-gray-400 hover:text-gray-100 border border-gray-700 hover:border-gray-600{% endif %}">
+    {{ p }}
+  </a>
+  {% endfor %}
+
+  {% if page < total_pages %}
+  <a href="/fighters?q={{ q }}&weight_class={{ weight_class }}&archetype={{ archetype }}&tier={{ tier }}&page={{ page + 1 }}"
+     class="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 hover:border-gray-600 rounded-lg transition-colors">
+    Next →
+  </a>
+  {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+<!-- Empty state -->
+<div class="flex flex-col items-center justify-center py-20 text-center">
+  <svg class="w-16 h-16 text-gray-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0"/>
+  </svg>
+  <p class="text-lg font-medium text-gray-400">No fighters found</p>
+  <p class="text-sm text-gray-600 mt-1">
+    {% if q or weight_class or archetype or tier %}
+      Try adjusting your filters
+    {% else %}
+      Run the UFC data pipeline to populate fighters
+    {% endif %}
+  </p>
+  {% if q or weight_class or archetype or tier %}
+  <a href="/fighters" class="mt-4 text-sm text-red-400 hover:text-red-300">Clear all filters</a>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

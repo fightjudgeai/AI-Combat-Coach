@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<nav class="text-xs text-gray-500 mt-1">
+  <a href="/fighters" class="hover:text-gray-300">Fighters</a>
+  <span class="mx-1.5">›</span>
+  <span class="text-gray-400">{{ fighter.name }}</span>
+</nav>
+{% endblock %}
+
+{% block page_actions %}
+<div class="hidden lg:flex items-center gap-3">
+  <a href="/simulate?a={{ fighter.name | urlencode }}"
+     class="flex items-center gap-2 text-xs font-medium text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg transition-colors">
+    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+    </svg>
+    Simulate
+  </a>
+  <a href="/scout?q={{ fighter.name | urlencode }}"
+     class="flex items-center gap-2 text-xs font-medium text-gray-300 hover:text-white border border-gray-700 hover:border-gray-600 px-3 py-1.5 rounded-lg transition-colors">
+    Scout Profile
+  </a>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Hero header ─────────────────────────────────────────────────────────── -->
+<div class="bg-gray-800 border border-gray-700/50 rounded-xl p-6 mb-6">
+  <div class="flex flex-col sm:flex-row sm:items-center gap-5">
+
+    <!-- Avatar placeholder -->
+    <div class="w-16 h-16 rounded-xl bg-gray-700 flex items-center justify-center flex-shrink-0 text-2xl font-bold text-gray-400">
+      {{ fighter.name[0] if fighter.name else '?' }}
+    </div>
+
+    <!-- Name + info -->
+    <div class="flex-1 min-w-0">
+      <div class="flex flex-wrap items-center gap-3 mb-1">
+        <h2 class="text-xl font-bold text-gray-100">{{ fighter.name }}</h2>
+        {% if fighter.style_archetype %}
+        <span class="px-2 py-0.5 rounded-md text-xs font-semibold border {{ fighter.style_archetype | archetype_style }}">
+          {{ fighter.style_archetype | replace('_', ' ') | title }}
+        </span>
+        {% endif %}
+        {% if fighter.career_fps_tier %}
+        <span class="px-2 py-0.5 rounded-md text-xs font-bold border {{ fighter.career_fps | fps_color }} opacity-80"
+              style="background: currentcolor; background: rgba(0,0,0,0.1)">
+          {{ fighter.career_fps | fps_tier }}
+        </span>
+        {% endif %}
+      </div>
+      <div class="flex flex-wrap gap-4 text-sm text-gray-400">
+        <span>{{ fighter.weight_class or 'Unknown class' }}</span>
+        {% if fighter.stance %}
+        <span class="text-gray-600">·</span>
+        <span>{{ fighter.stance | title }}</span>
+        {% endif %}
+        <span class="text-gray-600">·</span>
+        <span class="text-gray-200 font-semibold">
+          {{ fighter.ufc_wins }}-{{ fighter.ufc_losses }}{% if fighter.ufc_draws %}-{{ fighter.ufc_draws }}{% endif %}
+        </span>
+        <span class="text-gray-600">{{ fighter.ufc_appearances }} UFC fights</span>
+      </div>
+
+      {% if fighter.style_tags %}
+      <div class="flex flex-wrap gap-1.5 mt-2.5">
+        {% for tag in fighter.style_tags %}
+        <span class="px-2 py-0.5 bg-gray-700 text-gray-300 text-[11px] rounded-full">{{ tag | replace('_', ' ') }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- FPS Score -->
+    <div class="text-center border-l border-gray-700 pl-5 hidden sm:block">
+      <div class="text-4xl font-black {{ fighter.career_fps | fps_color }}">{{ fighter.career_fps | fmt_fps }}</div>
+      <div class="text-xs text-gray-500 mt-1 uppercase tracking-wide">Career FPS</div>
+      {% if fighter.fps_fight_count %}
+      <div class="text-[11px] text-gray-600 mt-0.5">from {{ fighter.fps_fight_count }} fights</div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- Mobile FPS score -->
+  <div class="sm:hidden mt-4 pt-4 border-t border-gray-700 flex items-center justify-between">
+    <span class="text-sm text-gray-400">Career FPS</span>
+    <span class="text-3xl font-black {{ fighter.career_fps | fps_color }}">{{ fighter.career_fps | fmt_fps }}</span>
+  </div>
+</div>
+
+<!-- ── Main grid: Radar + Stats ───────────────────────────────────────────── -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+  <!-- FPS Components Radar -->
+  <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+    <h3 class="text-sm font-semibold text-gray-200 mb-4">FPS Component Breakdown</h3>
+    <div class="relative h-64">
+      <canvas id="fpsRadar"></canvas>
+    </div>
+    <!-- Legend: component values -->
+    <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-4">
+      {% for label, value in fps_components.items() %}
+      <div class="flex items-center justify-between">
+        <span class="text-xs text-gray-400">{{ label }}</span>
+        <div class="flex items-center gap-2">
+          <div class="w-12 h-1 bg-gray-700 rounded-full overflow-hidden">
+            <div class="h-full rounded-full {{ value | fps_bar_color }}"
+                 style="width: {{ [value, 100]|min }}%"></div>
+          </div>
+          <span class="text-xs font-medium text-gray-300 w-8 text-right">{{ "%.0f" | format(value) }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Fight stats + tendencies -->
+  <div class="space-y-4">
+
+    <!-- Finishing stats -->
+    {% if fighter.finish_rate is not none %}
+    <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-gray-200 mb-4">Finishing Stats</h3>
+      <div class="grid grid-cols-3 gap-4 text-center">
+        <div>
+          <div class="text-xl font-bold text-gray-100">
+            {{ (fighter.finish_rate * 100) | round | int if fighter.finish_rate is not none else '—' }}%
+          </div>
+          <div class="text-xs text-gray-500 mt-0.5">Finish Rate</div>
+        </div>
+        <div>
+          <div class="text-xl font-bold text-red-400">
+            {{ (fighter.ko_rate * 100) | round | int if fighter.ko_rate is not none else '—' }}%
+          </div>
+          <div class="text-xs text-gray-500 mt-0.5">KO/TKO Rate</div>
+        </div>
+        <div>
+          <div class="text-xl font-bold text-blue-400">
+            {{ (fighter.sub_rate * 100) | round | int if fighter.sub_rate is not none else '—' }}%
+          </div>
+          <div class="text-xs text-gray-500 mt-0.5">Sub Rate</div>
+        </div>
+      </div>
+
+      <!-- Visual bar -->
+      {% if fighter.finish_rate %}
+      <div class="mt-4">
+        <div class="flex text-[10px] text-gray-500 justify-between mb-1">
+          <span>Decisions</span>
+          <span>Finishes</span>
+        </div>
+        <div class="h-2 bg-gray-700 rounded-full overflow-hidden flex">
+          {% set ko = ((fighter.ko_rate or 0) * 100)|round|int %}
+          {% set sub = ((fighter.sub_rate or 0) * 100)|round|int %}
+          {% set dec = 100 - ko - sub %}
+          <div class="h-full bg-gray-600" style="width: {{ dec }}%"></div>
+          <div class="h-full bg-blue-500" style="width: {{ sub }}%"></div>
+          <div class="h-full bg-red-500" style="width: {{ ko }}%"></div>
+        </div>
+        <div class="flex text-[10px] gap-3 mt-1.5">
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-gray-600 inline-block"></span> Dec {{ dec }}%</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-500 inline-block"></span> Sub {{ sub }}%</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span> KO {{ ko }}%</span>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Raw averages -->
+    <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-gray-200 mb-3">Performance Averages</h3>
+      <div class="grid grid-cols-2 gap-3">
+        {% for key, label in [
+          ('avg_offensive_efficiency', 'Offensive Eff.'),
+          ('avg_defensive_response', 'Defensive Resp.'),
+          ('avg_control_dictation', 'Control Dictation'),
+          ('avg_finish_threat', 'Finish Threat'),
+          ('avg_cardio_pace', 'Cardio & Pace'),
+          ('avg_durability', 'Durability'),
+          ('avg_fight_iq', 'Fight IQ'),
+          ('avg_dominance', 'Dominance'),
+        ] %}
+        {% if fighter[key] is not none %}
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs text-gray-500 truncate">{{ label }}</span>
+          <span class="text-xs font-semibold {{ fighter[key] | float | fps_color }} flex-shrink-0">
+            {{ "%.1f" | format(fighter[key] | float) }}
+          </span>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Fight history ───────────────────────────────────────────────────────── -->
+{% if fights %}
+<div class="bg-gray-800 border border-gray-700/50 rounded-xl">
+  <div class="px-5 py-4 border-b border-gray-700/50">
+    <h3 class="text-sm font-semibold text-gray-200">Fight History</h3>
+    <p class="text-xs text-gray-500 mt-0.5">Most recent {{ fights | length }} UFC fights</p>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-xs text-gray-500 border-b border-gray-700/50">
+          <th class="px-5 py-3 font-medium">Date</th>
+          <th class="px-3 py-3 font-medium">Result</th>
+          <th class="px-3 py-3 font-medium">Opponent</th>
+          <th class="px-3 py-3 font-medium hidden sm:table-cell">Method</th>
+          <th class="px-3 py-3 font-medium hidden md:table-cell">Event</th>
+          <th class="px-3 py-3 font-medium text-right">FPS</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-700/30">
+        {% for fight in fights %}
+        {% set is_a = fight.fighter_a_id == fighter.id %}
+        {% set opponent = fight.fighter_b_name if is_a else fight.fighter_a_name %}
+        {% set won = fight.winner_name == fighter.name %}
+        {% set my_fps = fight.fighter_a_fps if is_a else fight.fighter_b_fps %}
+        <tr class="hover:bg-gray-700/30 transition-colors">
+          <td class="px-5 py-3 text-gray-400 text-xs whitespace-nowrap">
+            {{ fight.fight_date or '—' }}
+          </td>
+          <td class="px-3 py-3">
+            <span class="px-2 py-0.5 rounded text-xs font-bold
+                         {% if won %}bg-emerald-500/15 text-emerald-400{% else %}bg-red-500/15 text-red-400{% endif %}">
+              {{ 'W' if won else 'L' }}
+            </span>
+            {% if fight.is_title_fight %}
+            <span class="ml-1 text-[10px] text-amber-400">🏆</span>
+            {% endif %}
+          </td>
+          <td class="px-3 py-3 text-gray-200 font-medium">{{ opponent or '—' }}</td>
+          <td class="px-3 py-3 text-gray-400 hidden sm:table-cell whitespace-nowrap">
+            {% if fight.method %}
+              {{ fight.method | truncate(20) }}
+              {% if fight.finish_round %}<span class="text-gray-600 ml-1">R{{ fight.finish_round }}</span>{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td class="px-3 py-3 text-gray-500 text-xs hidden md:table-cell">{{ fight.event_name | truncate(28) if fight.event_name else '—' }}</td>
+          <td class="px-3 py-3 text-right">
+            {% if my_fps %}
+            <span class="font-semibold {{ my_fps | fps_color }}">{{ my_fps | fmt_fps }}</span>
+            {% else %}
+            <span class="text-gray-600">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const fps = {{ fps_components_json }};
+const labels = Object.keys(fps);
+const values = Object.values(fps);
+
+const ctx = document.getElementById('fpsRadar').getContext('2d');
+new Chart(ctx, {
+  type: 'radar',
+  data: {
+    labels: labels,
+    datasets: [{
+      data: values,
+      backgroundColor: 'rgba(220, 38, 38, 0.12)',
+      borderColor: '#dc2626',
+      borderWidth: 2,
+      pointBackgroundColor: '#dc2626',
+      pointBorderColor: '#dc2626',
+      pointHoverBackgroundColor: '#ef4444',
+      pointRadius: 3,
+      pointHoverRadius: 5,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      r: {
+        min: 0,
+        max: 100,
+        ticks: {
+          stepSize: 25,
+          color: '#4b5563',
+          backdropColor: 'transparent',
+          font: { size: 10 },
+        },
+        grid: { color: '#374151' },
+        angleLines: { color: '#374151' },
+        pointLabels: {
+          color: '#9ca3af',
+          font: { size: 10 },
+        },
+      }
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#1f2937',
+        borderColor: '#374151',
+        borderWidth: 1,
+        titleColor: '#f9fafb',
+        bodyColor: '#d1d5db',
+        callbacks: {
+          label: ctx => ` ${ctx.parsed.r.toFixed(1)}`
+        }
+      }
+    }
+  }
+});
+</script>
+{% endblock %}

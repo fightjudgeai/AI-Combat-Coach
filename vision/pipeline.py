@@ -70,15 +70,14 @@ def assign_corners(
     a, b = obs_list[0], obs_list[1]
 
     if corner == "auto":
-        # First frame each track_id appeared — assign corners by initial x position
+        # First frame each track_id appeared — assign corners by initial x position.
+        # Lower initial cx → left/red corner → that fighter becomes the target.
         a_init_cx = first_frame_seen.get(a.track_id, a.cx)
         b_init_cx = first_frame_seen.get(b.track_id, b.cx)
-        # Lower initial cx → left/red corner
         if a_init_cx <= b_init_cx:
-            target, opponent = (a, b) if corner != "right" else (b, a)
+            return a, b   # a started on the left → a is target
         else:
-            target, opponent = (b, a) if corner != "right" else (a, b)
-        return target, opponent
+            return b, a   # b started on the left → b is target
 
     # Explicit: find the one on the correct side in this frame
     left_obs  = a if a.cx <= b.cx else b

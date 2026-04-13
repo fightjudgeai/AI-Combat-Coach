@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- ── Search form ────────────────────────────────────────────────────────── -->
+<div class="max-w-2xl mx-auto mb-8">
+  <p class="text-sm text-gray-400 mb-4 text-center">
+    Search any fighter to generate a scouting report — pulls from verified UFC data + 32K fighter roster.
+  </p>
+
+  <form method="get" action="/scout" class="flex gap-2">
+    <div class="relative flex-1">
+      <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
+      </svg>
+      <input type="text" name="q" value="{{ q }}" placeholder="Search fighter name…"
+             class="w-full pl-11 pr-4 py-3 text-base bg-gray-800 border border-gray-700 text-gray-100 placeholder-gray-500 rounded-xl
+                    focus:outline-none focus:ring-2 focus:ring-red-500/40 focus:border-red-500/60 transition-all"
+             autofocus />
+    </div>
+    <button type="submit"
+            class="px-5 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors whitespace-nowrap">
+      Scout
+    </button>
+  </form>
+
+  <!-- Quick search suggestions -->
+  {% if not q %}
+  <div class="flex flex-wrap gap-2 mt-3 justify-center">
+    {% for name in ['Jones', 'Makhachev', 'Adesanya', 'Poirier', 'Volkanovski'] %}
+    <a href="/scout?q={{ name }}" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-xs text-gray-400 hover:text-gray-200 rounded-full transition-colors">
+      {{ name }}
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Error state ────────────────────────────────────────────────────────── -->
+{% if error %}
+<div class="max-w-2xl mx-auto mb-6 flex items-center gap-3 rounded-xl border border-red-600/30 bg-red-600/10 px-4 py-3 text-sm text-red-300">
+  <svg class="w-5 h-5 flex-shrink-0 text-red-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+  </svg>
+  {{ error }}
+</div>
+{% endif %}
+
+<!-- ── Profile result ──────────────────────────────────────────────────────── -->
+{% if profile %}
+<div class="max-w-4xl mx-auto">
+
+  <!-- Source badge -->
+  <div class="flex items-center gap-2 mb-4">
+    <span class="text-xs text-gray-500">Data source:</span>
+    <span class="px-2 py-0.5 rounded text-[11px] font-medium
+                 {% if profile.source == 'verified' or profile.source == 'ufc_fighters' %}
+                   bg-emerald-500/15 text-emerald-400 border border-emerald-500/25
+                 {% else %}
+                   bg-gray-500/15 text-gray-400 border border-gray-600/25
+                 {% endif %}">
+      {% if profile.source == 'verified' %}Verified (FPS scored)
+      {% elif profile.source == 'ufc_fighters' %}UFC fighters DB
+      {% else %}Scraped roster
+      {% endif %}
+    </span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+    <!-- Left: Identity + FPS -->
+    <div class="lg:col-span-1 space-y-4">
+
+      <!-- Identity card -->
+      <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 rounded-lg bg-gray-700 flex items-center justify-center text-xl font-bold text-gray-400 flex-shrink-0">
+            {{ profile.name[0] if profile.name else '?' }}
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-gray-100">{{ profile.name }}</h2>
+            {% if profile.get('nickname') %}
+            <p class="text-sm text-gray-500 italic">"{{ profile.nickname }}"</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="space-y-2.5 text-sm">
+          {% if profile.weight_class %}
+          <div class="flex items-center justify-between">
+            <span class="text-gray-500">Weight Class</span>
+            <span class="text-gray-200 font-medium">{{ profile.weight_class }}</span>
+          </div>
+          {% endif %}
+
+          {% if profile.get('record') %}
+          <div class="flex items-center justify-between">
+            <span class="text-gray-500">Record</span>
+            <span class="text-gray-100 font-bold">
+              {{ profile.record.wins }}-{{ profile.record.losses }}{% if profile.record.draws %}-{{ profile.record.draws }}{% endif %}
+            </span>
+          </div>
+          {% endif %}
+
+          {% if profile.get('stance') %}
+          <div class="flex items-center justify-between">
+            <span class="text-gray-500">Stance</span>
+            <span class="text-gray-200">{{ profile.stance | title }}</span>
+          </div>
+          {% endif %}
+
+          {% if profile.get('nationality') %}
+          <div class="flex items-center justify-between">
+            <span class="text-gray-500">Nationality</span>
+            <span class="text-gray-200">{{ profile.nationality }}</span>
+          </div>
+          {% endif %}
+
+          {% if profile.get('ufc_appearances') %}
+          <div class="flex items-center justify-between">
+            <span class="text-gray-500">UFC Fights</span>
+            <span class="text-gray-200">{{ profile.ufc_appearances }}</span>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- FPS Score -->
+      {% set fps_val = profile.fps %}
+      {% if fps_val %}
+      <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5 text-center">
+        <div class="text-5xl font-black {{ fps_val | fps_color }} mb-1">{{ fps_val | fmt_fps }}</div>
+        <div class="text-xs text-gray-500 uppercase tracking-wider">Career FPS Score</div>
+        <div class="mt-3 h-2 bg-gray-700 rounded-full overflow-hidden">
+          <div class="h-full rounded-full fps-bar-fill {{ fps_val | fps_bar_color }}"
+               style="width: {{ [fps_val|float, 100]|min }}%"></div>
+        </div>
+        <div class="mt-2 text-sm font-bold {{ fps_val | fps_color }}">{{ fps_val | fps_tier }}</div>
+
+        {% if profile.get('record') %}
+        {% set rec = profile.record %}
+        <div class="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-gray-700">
+          {% if rec.get('finish_rate') %}
+          <div>
+            <div class="text-sm font-bold text-gray-100">{{ (rec.finish_rate * 100) | round | int }}%</div>
+            <div class="text-[10px] text-gray-500">Finish</div>
+          </div>
+          {% endif %}
+          {% if rec.get('ko_rate') %}
+          <div>
+            <div class="text-sm font-bold text-red-400">{{ (rec.ko_rate * 100) | round | int }}%</div>
+            <div class="text-[10px] text-gray-500">KO/TKO</div>
+          </div>
+          {% endif %}
+          {% if rec.get('sub_rate') %}
+          <div>
+            <div class="text-sm font-bold text-blue-400">{{ (rec.sub_rate * 100) | round | int }}%</div>
+            <div class="text-[10px] text-gray-500">Sub</div>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Style -->
+      {% if profile.get('style') %}
+      <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-4">
+        <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Fighting Style</div>
+        <div class="flex flex-wrap gap-1.5">
+          <span class="px-2.5 py-1 rounded-lg text-sm font-semibold border {{ profile.style | archetype_style }}">
+            {{ profile.style | replace('_', ' ') | title }}
+          </span>
+          {% if profile.get('style_tags') %}
+            {% for tag in profile.style_tags %}
+            <span class="px-2 py-0.5 bg-gray-700 text-gray-300 text-xs rounded-full">{{ tag | replace('_', ' ') }}</span>
+            {% endfor %}
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+
+    <!-- Right: Tendencies + fights -->
+    <div class="lg:col-span-2 space-y-4">
+
+      <!-- Tendencies -->
+      {% if profile.get('tendencies') %}
+      {% set tend = profile.tendencies %}
+      <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-4">Fighter Tendencies</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+          {% if tend.get('pressure_rating') is not none %}
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs text-gray-400">Pressure Rating</span>
+              <span class="text-xs font-semibold text-gray-200">{{ "%.0f" | format(tend.pressure_rating) }}/100</span>
+            </div>
+            <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+              <div class="h-full bg-red-500 rounded-full" style="width: {{ tend.pressure_rating }}%"></div>
+            </div>
+          </div>
+          {% endif %}
+
+          {% if tend.get('clinch_frequency') is not none %}
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs text-gray-400">Clinch Frequency</span>
+              <span class="text-xs font-semibold text-gray-200">{{ "%.0f" | format(tend.clinch_frequency) }}/100</span>
+            </div>
+            <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+              <div class="h-full bg-purple-500 rounded-full" style="width: {{ tend.clinch_frequency }}%"></div>
+            </div>
+          </div>
+          {% endif %}
+
+          {% if tend.get('finish_urgency') is not none %}
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs text-gray-400">Finish Urgency</span>
+              <span class="text-xs font-semibold text-gray-200">{{ "%.0f" | format(tend.finish_urgency) }}/100</span>
+            </div>
+            <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+              <div class="h-full bg-amber-500 rounded-full" style="width: {{ tend.finish_urgency }}%"></div>
+            </div>
+          </div>
+          {% endif %}
+
+          {% if tend.get('grappling_first') is not none %}
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-gray-400">Grappling First</span>
+            <span class="text-xs font-semibold {% if tend.grappling_first %}text-blue-400{% else %}text-gray-500{% endif %}">
+              {{ 'Yes' if tend.grappling_first else 'No' }}
+            </span>
+          </div>
+          {% endif %}
+
+          {% if tend.get('late_round_fade') is not none %}
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-gray-400">Late-round Fade</span>
+            <span class="text-xs font-semibold {% if tend.late_round_fade %}text-red-400{% else %}text-emerald-400{% endif %}">
+              {{ 'Yes' if tend.late_round_fade else 'No' }}
+            </span>
+          </div>
+          {% endif %}
+
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- FPS Components (if verified) -->
+      {% if profile.get('fps_components') %}
+      <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+        <h3 class="text-sm font-semibold text-gray-200 mb-4">FPS Component Breakdown</h3>
+        <div class="space-y-2.5">
+          {% for key, label in profile.fps_components.items() %}
+          {% set val = profile.fps_components[key] %}
+          {% if val is not none %}
+          <div class="flex items-center gap-3">
+            <span class="text-xs text-gray-400 w-36 flex-shrink-0">{{ key | replace('_', ' ') | title }}</span>
+            <div class="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+              <div class="h-full rounded-full {{ val | fps_bar_color }}" style="width: {{ [val|float, 100]|min }}%"></div>
+            </div>
+            <span class="text-xs font-medium text-gray-300 w-10 text-right">{{ "%.1f" | format(val|float) }}</span>
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Recent fights -->
+      {% if profile.get('recent_fights') and profile.recent_fights %}
+      <div class="bg-gray-800 border border-gray-700/50 rounded-xl">
+        <div class="px-5 py-4 border-b border-gray-700/50">
+          <h3 class="text-sm font-semibold text-gray-200">Recent Fights</h3>
+        </div>
+        <div class="divide-y divide-gray-700/30">
+          {% for fight in profile.recent_fights %}
+          <div class="px-5 py-3 flex items-center gap-4">
+            {% set result = fight.get('result', '') %}
+            <span class="px-2 py-0.5 rounded text-xs font-bold flex-shrink-0
+                         {% if result == 'W' %}bg-emerald-500/15 text-emerald-400
+                         {% elif result == 'L' %}bg-red-500/15 text-red-400
+                         {% else %}bg-gray-500/15 text-gray-400{% endif %}">
+              {{ result or '?' }}
+            </span>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm text-gray-200 font-medium truncate">
+                vs. {{ fight.get('opponent_name') or fight.get('opponent') or '—' }}
+              </div>
+              <div class="text-xs text-gray-500 mt-0.5">
+                {{ fight.get('method') or '' }}
+                {% if fight.get('event_name') or fight.get('event') %}
+                  · {{ fight.get('event_name') or fight.get('event') | truncate(30) }}
+                {% endif %}
+              </div>
+            </div>
+            <div class="text-xs text-gray-600 flex-shrink-0">
+              {{ fight.get('event_date') or fight.get('fight_date') or '' }}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Quick simulate CTA -->
+      <div class="flex gap-3">
+        <a href="/simulate?a={{ profile.name | urlencode }}"
+           class="flex-1 flex items-center justify-center gap-2 py-3 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          Simulate with {{ profile.name.split()[0] }}
+        </a>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Empty state (no search yet) ──────────────────────────────────────── -->
+{% if not q and not profile %}
+<div class="max-w-md mx-auto text-center py-12">
+  <div class="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mx-auto mb-4">
+    <svg class="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
+    </svg>
+  </div>
+  <h3 class="text-gray-400 font-medium mb-1">Search for a fighter</h3>
+  <p class="text-sm text-gray-600">Get FPS scores, style profile, tendencies, and recent fight history in one place.</p>
+</div>
+{% endif %}
+
+{% endblock %}

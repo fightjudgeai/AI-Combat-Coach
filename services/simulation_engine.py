@@ -252,6 +252,11 @@ def run_monte_carlo_simulation(
         rnd_probs = [1.0 / rounds_scheduled] * rounds_scheduled
 
     rnd_total = sum(rnd_probs)
+    if rnd_total <= 0:
+        # Fallback: uniform distribution across scheduled rounds
+        rnd_keys  = list(range(1, rounds_scheduled + 1))
+        rnd_probs = [1.0 / rounds_scheduled] * rounds_scheduled
+        rnd_total = 1.0
     rnd_probs = [p / rnd_total for p in rnd_probs]
 
     # ── Vectorised Monte Carlo ─────────────────────────────────────────────
