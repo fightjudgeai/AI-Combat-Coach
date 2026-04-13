@@ -1,78 +1,55 @@
 # FightJudge Pro - Combat Sports Promoter SaaS
 
 ## Problem Statement
-Enterprise-grade SaaS platform for combat sports promoters (MMA, boxing, kickboxing, grappling). Manages daily/weekly/monthly operations around events with AI-powered tools, Stripe ticketing, sponsor management, and real-time event-day command center.
+Enterprise-grade SaaS platform for combat sports promoters (MMA, boxing, kickboxing, grappling). AI-powered event management with dynamic ticket pricing, real-time fight night dashboard, sponsor management, operational checklists, and revenue analytics.
 
 ## Architecture
 - **Backend**: FastAPI + MongoDB (motor async) + JWT auth + bcrypt + OpenAI GPT via emergentintegrations + Stripe Checkout via emergentintegrations
 - **Frontend**: React 19 + Tailwind CSS + Radix UI + Phosphor Icons + React Router + Recharts
-- **Database**: MongoDB (collections: users, events, fighters, bouts, tasks, financials, sponsors, checklist_templates, payment_transactions, login_attempts)
-- **AI**: OpenAI GPT via Emergent LLM Key (promo generation, matchup suggestions, smart reminders)
-- **Payments**: Stripe Checkout via Emergent (ticket packages: General $65, VIP $150, Ringside $350, PPV $29.99)
-
-## User Personas
-- **Admin Promoter**: Full access to all modules, user management, financial oversight
-- **Staff**: Event management, tasks, financials, sponsor coordination
-- **Matchmaker**: Fighter roster, fight card builder, matchup suggestions
-
-## Core Requirements (Static)
-- [x] JWT Authentication with role-based access
-- [x] Event Management CRUD with status tracking
-- [x] Fighter Roster CRUD with weight class filtering
-- [x] Fight Card Builder with bout matchups
-- [x] Task Management with priority, recurrence, event linkage
-- [x] Financial Tracking (revenue/expense with analytics)
-- [x] AI Promo Description Generator
-- [x] AI Fight Matchup Suggestions
-- [x] Dashboard with key stats
+- **Database**: MongoDB (collections: users, events, fighters, bouts, tasks, financials, sponsors, checklist_templates, payment_transactions, pricing_configs, login_attempts)
+- **AI**: OpenAI GPT via Emergent LLM Key (promo generation, matchup suggestions, smart reminders, pricing recommendations)
+- **Payments**: Stripe Checkout via Emergent with dynamic pricing (4 tiers: General $65, VIP $150, Ringside $350, PPV $29.99 - base prices)
 
 ## What's Been Implemented
 
 ### Phase 1 (2026-04-13) - MVP
-- Full backend with 25+ API endpoints
-- Auth, Events, Fighters, Fight Cards, Tasks, Financials, AI Tools
-- Neo-brutalist UI with Bebas Neue typography
-- Sample seed data (3 events, 6 fighters)
+- Auth (JWT + bcrypt), Events/Fighters/Bouts CRUD, Tasks, Financials, AI Promo/Matchups
+- Neo-brutalist UFC-style UI, 6 seeded fighters, 3 seeded events
 
 ### Phase 2 (2026-04-13) - Expansion
-- **Rebrand to FightJudge Pro**
-- **Fight Night Live Dashboard** - Real-time event-day command center with bout status controls, live financial tally, ticket counts, auto-refresh
-- **Sponsors Management** - Full CRUD with tier system (Platinum/Gold/Silver/Bronze), status tracking, contact info
-- **Enhanced Checklists** - 4 seeded templates (Daily/Weekly/Monthly/Event Day) with apply-to-event functionality that auto-creates tasks
-- **Revenue Analytics** - Charts (Pie: spending by category, Bar: monthly revenue vs expenses), per-event breakdown, 3-tab interface
-- **Stripe Ticketing** - 4 ticket packages (General/VIP/Ringside/PPV), Stripe Checkout integration, payment status polling, purchase history
-- **Smart AI Reminders** - AI scans event data for risk alerts, missing tasks, compliance issues, timeline recommendations
-- **Enhanced Dashboard** - 8 stat cards, quick action buttons for Live/Checklists/AI
+- FightJudge Pro rebrand, Fight Night Live Dashboard, Sponsors Management
+- Checklists (4 templates: Daily/Weekly/Monthly/Event Day), Revenue Analytics with charts
+- Stripe Ticketing (4 packages), Smart AI Reminders
+
+### Phase 3 (2026-04-13) - Dynamic Pricing
+- **Dynamic Pricing Algorithm**: 3-factor pricing (scarcity/urgency/velocity) with 0.8x-2.5x bounds
+  - Scarcity: Adjusts based on % capacity sold (0-50%: 1.0x → 90%+: 1.5x)
+  - Urgency: Days to event (30+ days: 1.0x → event day: 1.4x)
+  - Velocity: Sales per day over 7-day window (slow: 0.9x discount → hot: 1.25x)
+- **Pricing Intelligence Dashboard**: Overview table with all factors, sales by package chart, daily sales trend
+- **Sales Analytics**: Total sold, revenue, capacity utilization, per-package breakdown
+- **AI Pricing Recommendations**: GPT analyzes event data and recommends optimal pricing strategies
+- Dynamic pricing used at checkout (actual Stripe amount = dynamic price)
 
 ## Testing Status
-- Backend: 45/45 tests passed (100%)
-- Frontend: All core features working (95%+)
-- Phase 2 features: All functional
+- Phase 3: Backend 50/50 (100%), Frontend 100%, Integration 100%, Zero regressions
 
 ## Prioritized Backlog
-### P0 (Critical) - None remaining
-
 ### P1 (High)
 - Google OAuth social login
-- Mobile responsive sidebar (hamburger menu)
-- Event detail page with linked bouts/tasks/financials
+- Mobile responsive sidebar
 - Bout result recording with fighter record auto-update
 - Custom checklist template creation UI
+- Event detail page with linked bouts/tasks/financials
 
 ### P2 (Medium)
-- Calendar view for events/tasks
-- Export financials to CSV/PDF
-- Email/SMS notifications (Twilio integration)
-- Fighter profile photos (Cloudinary)
-- Social media scheduler
-- Dynamic ticket pricing based on sales velocity
+- Calendar view, CSV/PDF export, Email/SMS (Twilio), Fighter photos
+- Social media scheduler, Fan engagement tools
+- Dynamic pricing history/audit log
+- Price alert notifications when surge triggers
 
 ### P3 (Low)
-- Dark mode toggle
-- Event poster/flyer AI generation
-- Weight class rankings
-- Historical analytics dashboard
-- Live event overlays / stream integration
-- Compliance AI (Texas TDLR filings)
-- Crowd & ops AI (attendance prediction)
-- Fan engagement tools (predictions, UGC challenges)
+- Dark mode, Event poster AI generation, Weight class rankings
+- Historical analytics, Live stream overlays
+- Compliance AI (Texas TDLR filings), Crowd prediction AI
+- Fight Judge CV model integration endpoints
