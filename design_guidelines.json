@@ -1,0 +1,134 @@
+{
+  "project_name": "Combat Sports Promoter SaaS",
+  "theme": "light",
+  "archetype": "Archetype 4 (Swiss & High-Contrast) + Archetype 2 (Performance Pro)",
+  "emotional_tone": "Aggressive clarity, elite athleticism, professional, high-stakes",
+  "design_philosophy": "UFC graphic style feel: stark contrasts, heavy/condensed typography, metallic accents, and dense data presentation mimicking the 'Tale of the Tape'.",
+  "colors": {
+    "light_mode": {
+      "background": "#FFFFFF",
+      "surface": "#F4F4F5",
+      "surface_alt": "#E4E4E7",
+      "primary": "#09090B",
+      "primary_foreground": "#FFFFFF",
+      "accent_gold": "#D4AF37",
+      "accent_red": "#DC2626",
+      "text_main": "#09090B",
+      "text_muted": "#52525B",
+      "border": "#E4E4E7",
+      "success": "#16A34A",
+      "warning": "#F59E0B"
+    },
+    "dark_mode": {
+      "background": "#09090B",
+      "surface": "#18181B",
+      "surface_alt": "#27272A",
+      "primary": "#FFFFFF",
+      "primary_foreground": "#09090B",
+      "accent_gold": "#FACC15",
+      "accent_red": "#EF4444",
+      "text_main": "#FAFAFA",
+      "text_muted": "#A1A1AA",
+      "border": "#27272A",
+      "success": "#22C55E",
+      "warning": "#FBBF24"
+    }
+  },
+  "typography": {
+    "google_fonts_url": "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap",
+    "font_families": {
+      "heading": "'Bebas Neue', sans-serif",
+      "body": "'IBM Plex Sans', sans-serif",
+      "mono": "'JetBrains Mono', monospace"
+    },
+    "hierarchy": {
+      "h1": "text-5xl sm:text-6xl uppercase tracking-normal leading-none font-heading",
+      "h2": "text-4xl uppercase tracking-normal leading-tight font-heading",
+      "h3": "text-2xl uppercase tracking-normal font-heading",
+      "h4": "text-xl font-bold font-body tracking-tight",
+      "body": "text-base font-body text-text_main",
+      "body_sm": "text-sm font-body text-text_muted",
+      "overline": "text-xs font-mono uppercase tracking-[0.2em] text-text_muted",
+      "stats": "text-3xl font-heading tracking-wide"
+    }
+  },
+  "spacing_and_layout": {
+    "container_padding": "p-6 md:p-8 lg:p-12",
+    "widget_gap": "gap-4 md:gap-6",
+    "border_radius": "rounded-none",
+    "layout_modes": {
+      "dashboard": "grid grid-cols-1 md:grid-cols-4 lg:grid-cols-12 gap-6 auto-rows-min",
+      "auth_split": "grid grid-cols-1 lg:grid-cols-2 min-h-screen"
+    }
+  },
+  "surface_strategies": {
+    "cards": "bg-white border-2 border-zinc-950 shadow-[4px_4px_0px_0px_rgba(9,9,11,1)] transition-transform hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[6px_6px_0px_0px_rgba(9,9,11,1)]",
+    "cards_dark": "bg-zinc-950 border border-zinc-800",
+    "glass_header": "bg-white/80 backdrop-blur-xl border-b-2 border-zinc-950 z-50",
+    "accent_panel": "bg-zinc-950 text-white p-6 border-l-4 border-l-[#DC2626]"
+  },
+  "components": {
+    "button_primary": "bg-zinc-950 text-white font-heading uppercase text-xl px-6 py-3 border-2 border-transparent hover:bg-transparent hover:text-zinc-950 hover:border-zinc-950 transition-all duration-150 ease-out",
+    "button_accent": "bg-[#DC2626] text-white font-heading uppercase text-xl px-6 py-3 border-2 border-[#DC2626] shadow-[4px_4px_0px_0px_rgba(9,9,11,1)] hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[6px_6px_0px_0px_rgba(9,9,11,1)] transition-all",
+    "button_gold": "bg-[#D4AF37] text-zinc-950 font-heading uppercase text-xl px-6 py-3 border-2 border-zinc-950 shadow-[4px_4px_0px_0px_rgba(9,9,11,1)] transition-all",
+    "input": "bg-zinc-50 border-2 border-zinc-950 px-4 py-3 font-body focus:outline-none focus:ring-0 focus:border-[#DC2626] transition-colors rounded-none",
+    "table_header": "bg-zinc-950 text-white font-heading uppercase text-lg tracking-wider",
+    "badge_weightclass": "bg-zinc-200 text-zinc-950 font-mono text-xs px-2 py-1 uppercase font-bold",
+    "badge_status": "border-2 border-zinc-950 font-heading uppercase text-sm px-2 py-0.5",
+    "ai_feature_highlight": "border-l-4 border-l-[#D4AF37] bg-yellow-50/50 p-4"
+  },
+  "icons_library": {
+    "name": "@phosphor-icons/react",
+    "instructions": "Use 'bold' weight for active state or important actions, 'regular' for standard."
+  },
+  "animations": {
+    "hover": "transition-transform duration-150 ease-out",
+    "page_load": "framer-motion opacity-0 y-4 to opacity-100 y-0 with spring physics",
+    "banned": "Slow fades, gentle floating (breaks the aggressive combat feel)"
+  },
+  "image_assets": {
+    "auth_hero": {
+      "url": "https://images.unsplash.com/photo-1720731052635-c6de1beca7f9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHw0fHxtbWElMjBmaWdodGVyJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc2MDQ0MDY4fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Shirtless MMA fighter in the dark, extremely high contrast, dramatic lighting. Use as the left/right split background on the login/signup screen with a black/white gradient overlay.",
+      "usage": "Login/Registration Split Screen Background"
+    },
+    "fighter_portraits": [
+      {
+        "url": "https://images.unsplash.com/photo-1683105158834-dc06052de87e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxtbWElMjBmaWdodGVyJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc2MDQ0MDY4fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Fighter standing in ring with hands on hips."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1683105164144-fdd8a29bd8c9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwxfHxtbWElMjBmaWdodGVyJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc2MDQ0MDY4fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Fighter flexing muscles."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1683105169704-f9077f21c16b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxtbWElMjBmaWdodGVyJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc2MDQ0MDY4fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Fighter with tattoo."
+      }
+    ],
+    "dashboard_accents": {
+      "boxing_gloves": "https://images.unsplash.com/photo-1549719386-74dfcbf7dbed?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODB8MHwxfHNlYXJjaHwxfHxib3hpbmclMjBnbG92ZXN8ZW58MHx8fHwxNzc2MDQ0MDYzfDA&ixlib=rb-4.1.0&q=85",
+      "arena_lights": "https://images.unsplash.com/photo-1762445964939-123200d655ee?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwxfHxzcG9ydHMlMjBhcmVuYSUyMGxpZ2h0c3xlbnwwfHx8fDE3NzYwNDQwNjh8MA&ixlib=rb-4.1.0&q=85"
+    }
+  },
+  "specific_views": {
+    "dashboard_overview": "Top stats (Total Revenue, Active Fighters, Upcoming Events) using heavy typography. Use 'cards' surface strategy with brutalist shadows.",
+    "event_management": "List of events styled like 'Tale of the Tape' rows. High contrast dates (e.g., 'OCT 24').",
+    "fight_card_builder": "Two-column bento box layout for matchups. 'Fighter A vs Fighter B' with intersecting bold typography and 'VS' in Accent Red.",
+    "ai_promo_generator": "Text area with a prominent Gold Action Button. The result block should look like a printed ticket or fight poster snippet."
+  },
+  "accessibility_and_testing": {
+    "contrast": "APCA standard required. Black text on white, White text on black. Avoid mid-tones for typography.",
+    "testing": "All interactive elements MUST include data-testid attributes (e.g., data-testid='create-event-btn')."
+  },
+  "instructions_to_main_agent": [
+    "1. Use 'neo-brutalist' / 'Swiss brutalist' styling. No soft border-radius. Everything is sharp, squared off, high contrast.",
+    "2. Fonts MUST be loaded in the main index.html/css. Use Bebas Neue for all H1/H2/H3 and buttons.",
+    "3. Buttons should have solid black borders and a hard shadow that shifts on hover, simulating a physical mechanical press.",
+    "4. Install @phosphor-icons/react for iconography. Use 'bold' or 'fill'.",
+    "5. For the AI Matchup Suggestions, heavily feature the 'accent_gold' color to indicate 'premium/AI' capabilities.",
+    "6. Do NOT use standard Vercel/Shadcn rounded aesthetic. Customize the Shadcn variables to: radius: 0, heavy borders.",
+    "7. Implement light theme as default, but use dark theme for specific high-intensity components like 'Fight Card Builder' modal or header to give the 'UFC event' night feel.",
+    "8. Use the provided Unsplash URLs for the Auth split screen background and Fighter Roster dummy data."
+  ]
+}
