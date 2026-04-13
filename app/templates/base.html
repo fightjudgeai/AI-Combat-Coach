@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ page_title }} — AI Combat Coach</title>
+  <meta name="description" content="AI-powered fight analysis, scouting, and prediction platform." />
+
+  <!-- Tailwind CSS Play CDN (supports JIT + arbitrary values) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { DEFAULT: '#dc2626', dark: '#b91c1c', light: '#ef4444' },
+          },
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+        }
+      }
+    }
+  </script>
+
+  <!-- Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #111827; }
+    ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+
+    /* Smooth transitions for interactive elements */
+    .nav-link { transition: background-color 0.15s ease, color 0.15s ease; }
+
+    /* Pulse animation for "running" status */
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+
+    /* FPS bar fill animation */
+    .fps-bar-fill { transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+  </style>
+
+  {% block head %}{% endblock %}
+</head>
+
+<body class="h-full bg-gray-900 text-gray-100 font-sans antialiased"
+      x-data="{ sidebarOpen: false }">
+
+  <!-- ── Mobile sidebar overlay ───────────────────────────────────────────── -->
+  <div
+    x-show="sidebarOpen"
+    x-cloak
+    class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
+    @click="sidebarOpen = false"
+    x-transition:enter="transition-opacity duration-200"
+    x-transition:enter-start="opacity-0"
+    x-transition:enter-end="opacity-100"
+    x-transition:leave="transition-opacity duration-200"
+    x-transition:leave-start="opacity-100"
+    x-transition:leave-end="opacity-0"
+  ></div>
+
+  <!-- ── Sidebar (desktop: always visible; mobile: drawer) ────────────────── -->
+  <aside
+    class="fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-gray-950 border-r border-gray-800
+           transition-transform duration-300 ease-in-out
+           -translate-x-full lg:translate-x-0"
+    :class="{ 'translate-x-0': sidebarOpen }"
+  >
+    <!-- Logo / brand -->
+    <div class="flex items-center gap-3 px-5 py-5 border-b border-gray-800">
+      <div class="flex-shrink-0 w-9 h-9 rounded-lg bg-red-600 flex items-center justify-center shadow-lg shadow-red-600/30">
+        <!-- Fist / glove icon (SVG) -->
+        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/>
+        </svg>
+      </div>
+      <div>
+        <div class="text-xs font-bold tracking-widest text-red-500 uppercase">AI COMBAT</div>
+        <div class="text-sm font-semibold text-gray-100 leading-tight">Coach Portal</div>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+
+      {% set nav = [
+        ('/', 'Dashboard', 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'),
+        ('/fighters', 'Fighters', 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0'),
+        ('/scout', 'Scout', 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0'),
+        ('/simulate', 'Simulate', 'M13 10V3L4 14h7v7l9-11h-7z'),
+        ('/vision', 'Vision Jobs', 'M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z'),
+        ('/analytics', 'Analytics', 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'),
+      ] %}
+
+      {% for href, label, icon_path in nav %}
+        {% set is_active = (href == '/' and request.url.path == '/') or (href != '/' and request.url.path.startswith(href)) %}
+        <a href="{{ href }}"
+           class="nav-link group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
+                  {% if is_active %}
+                    bg-red-600/15 text-red-400 border border-red-600/20
+                  {% else %}
+                    text-gray-400 hover:text-gray-100 hover:bg-gray-800 border border-transparent
+                  {% endif %}"
+           @click="sidebarOpen = false">
+          <svg class="w-5 h-5 flex-shrink-0 {% if is_active %}text-red-400{% else %}text-gray-500 group-hover:text-gray-300{% endif %}"
+               fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+            <path d="{{ icon_path }}" />
+          </svg>
+          {{ label }}
+        </a>
+      {% endfor %}
+    </nav>
+
+    <!-- Sidebar footer -->
+    <div class="px-4 py-4 border-t border-gray-800">
+      <div class="flex items-center gap-2">
+        <div class="w-2 h-2 rounded-full {% if db_connected is defined and db_connected %}bg-emerald-500{% else %}bg-gray-600{% endif %}"></div>
+        <span class="text-xs text-gray-500">
+          {% if db_connected is defined and db_connected %}Supabase connected{% else %}No DB connection{% endif %}
+        </span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main wrapper ──────────────────────────────────────────────────────── -->
+  <div class="lg:pl-64 flex flex-col min-h-full">
+
+    <!-- Mobile top bar -->
+    <header class="sticky top-0 z-30 lg:hidden flex items-center gap-4 px-4 py-3
+                   bg-gray-950/90 backdrop-blur border-b border-gray-800">
+      <button @click="sidebarOpen = true"
+              class="p-1.5 rounded-md text-gray-400 hover:text-gray-100 hover:bg-gray-800 transition-colors">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+      <div class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded bg-red-600 flex items-center justify-center">
+          <svg class="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/>
+          </svg>
+        </div>
+        <span class="font-semibold text-sm text-gray-100">AI Combat Coach</span>
+      </div>
+      <div class="ml-auto text-xs text-gray-500 truncate max-w-32">{{ page_title }}</div>
+    </header>
+
+    <!-- Desktop page header -->
+    <div class="hidden lg:flex items-center justify-between px-8 pt-7 pb-0">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-100">{{ page_title }}</h1>
+        {% block breadcrumb %}{% endblock %}
+      </div>
+      {% block page_actions %}{% endblock %}
+    </div>
+
+    <!-- Page content -->
+    <main class="flex-1 px-4 py-6 lg:px-8 lg:py-6">
+      {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="px-8 py-4 border-t border-gray-800 flex items-center justify-between">
+      <span class="text-xs text-gray-600">AI Combat Coach Portal</span>
+      <span class="text-xs text-gray-700">Powered by YOLOv8 · Monte Carlo · Supabase</span>
+    </footer>
+  </div>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

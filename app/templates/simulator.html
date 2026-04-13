@@ -1,0 +1,496 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- ── Simulation form ─────────────────────────────────────────────────────── -->
+<form method="post" action="/simulate" id="sim-form"
+      x-data="{ loading: false }" @submit="loading = true">
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+
+    <!-- Fighter A -->
+    <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-5 h-5 rounded bg-red-600 flex items-center justify-center">
+          <span class="text-[10px] text-white font-bold">A</span>
+        </div>
+        <h3 class="text-sm font-semibold text-gray-200">Fighter A</h3>
+      </div>
+
+      <div class="relative" x-data="fighterSearch('fighter_a', '{{ fighter_a_name }}')">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 z-10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
+        </svg>
+        <input type="text" name="fighter_a"
+               x-model="query"
+               @input.debounce.300ms="search()"
+               @focus="search()"
+               @blur="setTimeout(() => { results = [] }, 200)"
+               :value="query"
+               placeholder="Search fighter name…"
+               class="w-full pl-9 pr-4 py-2.5 bg-gray-700 border border-gray-600 text-gray-100 placeholder-gray-500 rounded-lg text-sm
+                      focus:outline-none focus:ring-2 focus:ring-red-500/40 focus:border-red-500/60 transition-all"
+               autocomplete="off" required />
+
+        <!-- Autocomplete dropdown -->
+        <div x-show="results.length > 0" x-cloak
+             class="absolute z-20 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden">
+          <template x-for="f in results" :key="f.id">
+            <button type="button" @click="select(f)"
+                    class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-700 text-left transition-colors">
+              <div>
+                <div class="text-sm font-medium text-gray-100" x-text="f.name"></div>
+                <div class="text-xs text-gray-500" x-text="f.weight_class || ''"></div>
+              </div>
+              <span class="text-xs font-bold flex-shrink-0 ml-3"
+                    :class="fpsCls(f.career_fps)" x-text="f.career_fps ? parseFloat(f.career_fps).toFixed(1) : '—'"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      {% if fa_data %}
+      <div class="mt-3 p-3 bg-gray-700/40 rounded-lg border border-gray-700">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-sm font-semibold text-gray-100">{{ fa_data.name }}</div>
+            <div class="text-xs text-gray-500 mt-0.5">{{ fa_data.weight_class or '—' }} · {{ fa_data.ufc_wins }}-{{ fa_data.ufc_losses }}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-lg font-bold {{ fa_data.career_fps | fps_color }}">{{ fa_data.career_fps | fmt_fps }}</div>
+            <div class="text-[10px] text-gray-600">FPS</div>
+          </div>
+        </div>
+        {% if fa_data.style_archetype %}
+        <div class="mt-2">
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-medium border {{ fa_data.style_archetype | archetype_style }}">
+            {{ fa_data.style_archetype | replace('_', ' ') | title }}
+          </span>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Fighter B -->
+    <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-5 h-5 rounded bg-blue-600 flex items-center justify-center">
+          <span class="text-[10px] text-white font-bold">B</span>
+        </div>
+        <h3 class="text-sm font-semibold text-gray-200">Fighter B</h3>
+      </div>
+
+      <div class="relative" x-data="fighterSearch('fighter_b', '{{ fighter_b_name }}')">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 z-10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
+        </svg>
+        <input type="text" name="fighter_b"
+               x-model="query"
+               @input.debounce.300ms="search()"
+               @focus="search()"
+               @blur="setTimeout(() => { results = [] }, 200)"
+               :value="query"
+               placeholder="Search fighter name…"
+               class="w-full pl-9 pr-4 py-2.5 bg-gray-700 border border-gray-600 text-gray-100 placeholder-gray-500 rounded-lg text-sm
+                      focus:outline-none focus:ring-2 focus:ring-red-500/40 focus:border-red-500/60 transition-all"
+               autocomplete="off" required />
+
+        <div x-show="results.length > 0" x-cloak
+             class="absolute z-20 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden">
+          <template x-for="f in results" :key="f.id">
+            <button type="button" @click="select(f)"
+                    class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-700 text-left transition-colors">
+              <div>
+                <div class="text-sm font-medium text-gray-100" x-text="f.name"></div>
+                <div class="text-xs text-gray-500" x-text="f.weight_class || ''"></div>
+              </div>
+              <span class="text-xs font-bold flex-shrink-0 ml-3"
+                    :class="fpsCls(f.career_fps)" x-text="f.career_fps ? parseFloat(f.career_fps).toFixed(1) : '—'"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      {% if fb_data %}
+      <div class="mt-3 p-3 bg-gray-700/40 rounded-lg border border-gray-700">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-sm font-semibold text-gray-100">{{ fb_data.name }}</div>
+            <div class="text-xs text-gray-500 mt-0.5">{{ fb_data.weight_class or '—' }} · {{ fb_data.ufc_wins }}-{{ fb_data.ufc_losses }}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-lg font-bold {{ fb_data.career_fps | fps_color }}">{{ fb_data.career_fps | fmt_fps }}</div>
+            <div class="text-[10px] text-gray-600">FPS</div>
+          </div>
+        </div>
+        {% if fb_data.style_archetype %}
+        <div class="mt-2">
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-medium border {{ fb_data.style_archetype | archetype_style }}">
+            {{ fb_data.style_archetype | replace('_', ' ') | title }}
+          </span>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- Rounds + submit -->
+  <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-6">
+    <div class="flex items-center gap-3">
+      <span class="text-sm text-gray-400">Rounds scheduled:</span>
+      <div class="flex rounded-lg overflow-hidden border border-gray-700">
+        <label class="flex items-center">
+          <input type="radio" name="rounds" value="3" {% if rounds == 3 %}checked{% endif %} class="sr-only peer" />
+          <span class="px-4 py-2 text-sm font-medium cursor-pointer transition-colors
+                       peer-checked:bg-red-600 peer-checked:text-white text-gray-400 hover:text-gray-200 bg-gray-800">
+            3 Rounds
+          </span>
+        </label>
+        <label class="flex items-center border-l border-gray-700">
+          <input type="radio" name="rounds" value="5" {% if rounds == 5 %}checked{% endif %} class="sr-only peer" />
+          <span class="px-4 py-2 text-sm font-medium cursor-pointer transition-colors
+                       peer-checked:bg-red-600 peer-checked:text-white text-gray-400 hover:text-gray-200 bg-gray-800">
+            5 Rounds
+          </span>
+        </label>
+      </div>
+    </div>
+
+    <button type="submit"
+            class="flex items-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors disabled:opacity-60"
+            :disabled="loading">
+      <svg x-show="!loading" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+      </svg>
+      <svg x-show="loading" x-cloak class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+      </svg>
+      <span x-text="loading ? 'Running…' : 'Run Simulation'">Run Simulation</span>
+    </button>
+
+    <p class="text-xs text-gray-600">10,000 Monte Carlo trials · Only fighters with 5+ UFC fights</p>
+  </div>
+
+</form>
+
+<!-- ── Error ───────────────────────────────────────────────────────────────── -->
+{% if error %}
+<div class="mb-6 flex items-center gap-3 rounded-xl border border-red-600/30 bg-red-600/10 px-4 py-3 text-sm text-red-300">
+  <svg class="w-5 h-5 flex-shrink-0 text-red-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+  </svg>
+  {{ error }}
+</div>
+{% endif %}
+
+<!-- ── Simulation results ───────────────────────────────────────────────────── -->
+{% if result %}
+<div class="space-y-5">
+
+  <!-- VS header -->
+  <div class="relative bg-gray-800 border border-gray-700/50 rounded-xl p-5 overflow-hidden">
+    <!-- Background gradient -->
+    <div class="absolute inset-0 bg-gradient-to-r from-red-600/5 via-transparent to-blue-600/5"></div>
+
+    <div class="relative grid grid-cols-3 items-center gap-4">
+      <!-- Fighter A -->
+      <div class="text-center">
+        <div class="text-lg font-bold text-gray-100">{{ result.fighter_a_name }}</div>
+        <div class="text-xs text-gray-500 mt-0.5">{{ result.get('fighter_a_record', '') }}</div>
+        <div class="mt-2">
+          <span class="text-3xl font-black {{ result.fighter_a_fps | fps_color }}">
+            {{ result.fighter_a_fps | fmt_fps }}
+          </span>
+          <div class="text-[10px] text-gray-600 mt-0.5">FPS</div>
+        </div>
+        {% if result.fighter_a_archetype %}
+        <div class="mt-2">
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-medium border {{ result.fighter_a_archetype | archetype_style }}">
+            {{ result.fighter_a_archetype | replace('_', ' ') | title }}
+          </span>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- VS -->
+      <div class="text-center">
+        <div class="text-2xl font-black text-gray-600">VS</div>
+        <div class="text-xs text-gray-600 mt-1">{{ result.rounds_scheduled }}R</div>
+        <div class="mt-2 text-xs text-gray-500">
+          Δ FPS: <span class="{% if result.fps_delta > 0 %}text-red-400{% elif result.fps_delta < 0 %}text-blue-400{% else %}text-gray-400{% endif %} font-semibold">
+            {{ "%+.1f" | format(result.fps_delta) }}
+          </span>
+        </div>
+        <div class="text-[10px] text-gray-600 mt-1">{{ result.delta_bucket | replace('_', ' ') | title }}</div>
+      </div>
+
+      <!-- Fighter B -->
+      <div class="text-center">
+        <div class="text-lg font-bold text-gray-100">{{ result.fighter_b_name }}</div>
+        <div class="text-xs text-gray-500 mt-0.5">{{ result.get('fighter_b_record', '') }}</div>
+        <div class="mt-2">
+          <span class="text-3xl font-black {{ result.fighter_b_fps | fps_color }}">
+            {{ result.fighter_b_fps | fmt_fps }}
+          </span>
+          <div class="text-[10px] text-gray-600 mt-0.5">FPS</div>
+        </div>
+        {% if result.fighter_b_archetype %}
+        <div class="mt-2">
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-medium border {{ result.fighter_b_archetype | archetype_style }}">
+            {{ result.fighter_b_archetype | replace('_', ' ') | title }}
+          </span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Win probability + Method breakdown -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+    <!-- Win probability bars -->
+    <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-gray-200 mb-4">Win Probability</h3>
+
+      <!-- Fighter A -->
+      <div class="mb-4">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-sm font-medium text-gray-200">{{ result.fighter_a_name }}</span>
+          <span class="text-lg font-black text-red-400">{{ (result.fighter_a_win_probability * 100) | round | int }}%</span>
+        </div>
+        <div class="h-3 bg-gray-700 rounded-full overflow-hidden">
+          <div class="h-full bg-red-500 rounded-full fps-bar-fill"
+               style="width: {{ (result.fighter_a_win_probability * 100) | round | int }}%"></div>
+        </div>
+      </div>
+
+      <!-- Fighter B -->
+      <div>
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-sm font-medium text-gray-200">{{ result.fighter_b_name }}</span>
+          <span class="text-lg font-black text-blue-400">{{ (result.fighter_b_win_probability * 100) | round | int }}%</span>
+        </div>
+        <div class="h-3 bg-gray-700 rounded-full overflow-hidden">
+          <div class="h-full bg-blue-500 rounded-full fps-bar-fill"
+               style="width: {{ (result.fighter_b_win_probability * 100) | round | int }}%"></div>
+        </div>
+      </div>
+
+      <!-- Verdict -->
+      <div class="mt-5 pt-4 border-t border-gray-700 text-center">
+        {% set a_pct = (result.fighter_a_win_probability * 100) | round | int %}
+        {% if a_pct > 60 %}
+          <div class="text-sm text-gray-400">Model favors <span class="text-red-400 font-semibold">{{ result.fighter_a_name }}</span></div>
+          <div class="text-xs text-gray-600 mt-0.5">{{ a_pct }}% confidence</div>
+        {% elif a_pct < 40 %}
+          <div class="text-sm text-gray-400">Model favors <span class="text-blue-400 font-semibold">{{ result.fighter_b_name }}</span></div>
+          <div class="text-xs text-gray-600 mt-0.5">{{ 100 - a_pct }}% confidence</div>
+        {% else %}
+          <div class="text-sm text-gray-400 font-semibold">Too close to call</div>
+          <div class="text-xs text-gray-600 mt-0.5">Within margin of uncertainty</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Method distribution with doughnut -->
+    <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-gray-200 mb-4">Method Distribution</h3>
+
+      <div class="grid grid-cols-2 gap-4 items-center">
+        <!-- Chart -->
+        <div class="relative h-36">
+          <canvas id="methodChart"></canvas>
+        </div>
+
+        <!-- Legend -->
+        <div class="space-y-3">
+          {% set methods = [
+            ('KO / TKO', result.ko_tko_probability, '#ef4444'),
+            ('Submission', result.submission_probability, '#3b82f6'),
+            ('Decision', result.decision_probability, '#6b7280'),
+          ] %}
+          {% for label, prob, color in methods %}
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <div class="flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background: {{ color }}"></span>
+                <span class="text-xs text-gray-400">{{ label }}</span>
+              </div>
+              <span class="text-sm font-bold text-gray-200">{{ (prob * 100) | round | int }}%</span>
+            </div>
+            <div class="h-1 bg-gray-700 rounded-full overflow-hidden">
+              <div class="h-full rounded-full" style="background: {{ color }}; width: {{ (prob * 100) | round | int }}%"></div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Round distribution + Metadata -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+    <!-- Round distribution -->
+    {% if result.round_distribution %}
+    <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-gray-200 mb-4">
+        Finish Round Distribution
+        <span class="text-xs text-gray-500 font-normal ml-1">(finishes only)</span>
+      </h3>
+
+      {% set max_rnd_prob = result.round_distribution.values() | list | max %}
+      <div class="space-y-2.5">
+        {% for rnd, prob in result.round_distribution.items() %}
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-gray-400 w-10 flex-shrink-0">Round {{ rnd }}</span>
+          <div class="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
+            <div class="h-full bg-amber-500 rounded-full"
+                 style="width: {{ (prob / max_rnd_prob * 100) | round | int }}%"></div>
+          </div>
+          <span class="text-xs font-semibold text-gray-300 w-10 text-right">{{ (prob * 100) | round | int }}%</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      {% if result.predicted_finish_round %}
+      <div class="mt-4 pt-3 border-t border-gray-700 text-xs text-gray-500">
+        Most likely finish: <span class="text-amber-400 font-semibold">Round {{ result.predicted_finish_round }}</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Simulation metadata -->
+    <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-gray-200 mb-4">Simulation Metadata</h3>
+      <div class="space-y-2.5 text-sm">
+        <div class="flex items-center justify-between">
+          <span class="text-gray-500">Trials run</span>
+          <span class="text-gray-200 font-medium">{{ "{:,}".format(result.n_simulations) }}</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-gray-500">FPS delta</span>
+          <span class="font-medium {% if result.fps_delta > 0 %}text-red-400{% elif result.fps_delta < 0 %}text-blue-400{% else %}text-gray-400{% endif %}">
+            {{ "%+.2f" | format(result.fps_delta) }}
+          </span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-gray-500">Delta bucket</span>
+          <span class="text-gray-200">{{ result.delta_bucket | replace('_', ' ') | title }}</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-gray-500">Style matchup</span>
+          <span class="text-gray-400 text-xs font-mono">{{ result.style_key | replace('_vs_', ' vs ') }}</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-gray-500">Calibration data</span>
+          <span class="text-gray-200">{{ result.calibration_sample_size }} fights</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-gray-500">Data source</span>
+          <span class="text-emerald-400 text-xs">{{ result.data_source | replace('_', ' ') }}</span>
+        </div>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-gray-700 text-xs text-gray-600">
+        Probabilities are model estimates based on historical UFC FPS data. Not a betting prediction.
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+{% elif not error %}
+<!-- Empty state -->
+<div class="flex flex-col items-center justify-center py-16 text-center">
+  <div class="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mb-4">
+    <svg class="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+    </svg>
+  </div>
+  <h3 class="text-gray-400 font-medium mb-1">Enter two fighters above</h3>
+  <p class="text-sm text-gray-600 max-w-sm">Runs 10,000 Monte Carlo trials using real UFC FPS scores and calibrated probability tables.</p>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function fighterSearch(fieldName, initialQuery) {
+  return {
+    query: initialQuery,
+    results: [],
+    async search() {
+      if (this.query.length < 2) { this.results = []; return; }
+      try {
+        const r = await fetch(`/api/fighters/search?q=${encodeURIComponent(this.query)}&limit=8`);
+        this.results = await r.json();
+      } catch { this.results = []; }
+    },
+    select(f) {
+      this.query = f.name;
+      this.results = [];
+    },
+    fpsCls(fps) {
+      if (!fps) return 'text-gray-500';
+      const f = parseFloat(fps);
+      if (f >= 75) return 'text-emerald-400';
+      if (f >= 65) return 'text-green-400';
+      if (f >= 55) return 'text-yellow-400';
+      if (f >= 45) return 'text-orange-400';
+      return 'text-red-400';
+    }
+  };
+}
+
+{% if result %}
+// Doughnut chart for method distribution
+const ctx = document.getElementById('methodChart').getContext('2d');
+const simData = {{ result_json }};
+
+new Chart(ctx, {
+  type: 'doughnut',
+  data: {
+    labels: ['KO/TKO', 'Submission', 'Decision'],
+    datasets: [{
+      data: [
+        simData.ko_tko_probability,
+        simData.submission_probability,
+        simData.decision_probability,
+      ],
+      backgroundColor: ['#ef4444', '#3b82f6', '#4b5563'],
+      borderColor: '#1f2937',
+      borderWidth: 2,
+      hoverOffset: 4,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '65%',
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#1f2937',
+        borderColor: '#374151',
+        borderWidth: 1,
+        titleColor: '#f9fafb',
+        bodyColor: '#d1d5db',
+        callbacks: {
+          label: ctx => ` ${(ctx.parsed * 100).toFixed(0)}%`
+        }
+      }
+    }
+  }
+});
+{% endif %}
+</script>
+{% endblock %}

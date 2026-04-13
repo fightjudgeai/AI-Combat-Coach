@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+  <!-- Style archetype distribution -->
+  <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+    <h3 class="text-sm font-semibold text-gray-200 mb-4">Style Archetype Distribution</h3>
+    <div class="relative h-56">
+      <canvas id="archetypeChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Fight method distribution -->
+  <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+    <h3 class="text-sm font-semibold text-gray-200 mb-4">Fight Method Distribution</h3>
+    <div class="relative h-56">
+      <canvas id="methodChart"></canvas>
+    </div>
+  </div>
+
+  <!-- FPS tier distribution -->
+  <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+    <h3 class="text-sm font-semibold text-gray-200 mb-4">FPS Tier Distribution</h3>
+    <div class="relative h-56">
+      <canvas id="tierChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Weight class distribution -->
+  <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5">
+    <h3 class="text-sm font-semibold text-gray-200 mb-4">Weight Class Distribution</h3>
+    <div class="relative h-56">
+      <canvas id="weightChart"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Top finishers ───────────────────────────────────────────────────────── -->
+{% if top_finishers %}
+<div class="bg-gray-800 border border-gray-700/50 rounded-xl mb-6">
+  <div class="px-5 py-4 border-b border-gray-700/50 flex items-center gap-2">
+    <svg class="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+      <path fill-rule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clip-rule="evenodd"/>
+    </svg>
+    <h3 class="text-sm font-semibold text-gray-200">Top Finishers by Finish Rate</h3>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-xs text-gray-500 border-b border-gray-700/30">
+          <th class="px-5 py-3 font-medium">#</th>
+          <th class="px-3 py-3 font-medium">Fighter</th>
+          <th class="px-3 py-3 font-medium hidden sm:table-cell">Weight Class</th>
+          <th class="px-3 py-3 font-medium hidden sm:table-cell">Style</th>
+          <th class="px-3 py-3 font-medium text-right">Finish%</th>
+          <th class="px-3 py-3 font-medium text-right hidden md:table-cell">KO%</th>
+          <th class="px-3 py-3 font-medium text-right hidden md:table-cell">Sub%</th>
+          <th class="px-3 py-3 font-medium text-right">FPS</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-700/30">
+        {% for f in top_finishers %}
+        <tr class="hover:bg-gray-700/30 transition-colors">
+          <td class="px-5 py-3 text-sm font-bold
+                     {% if loop.index == 1 %}text-amber-400
+                     {% elif loop.index == 2 %}text-gray-400
+                     {% elif loop.index == 3 %}text-orange-500
+                     {% else %}text-gray-600{% endif %}">
+            {{ loop.index }}
+          </td>
+          <td class="px-3 py-3 font-semibold text-gray-100">{{ f.name }}</td>
+          <td class="px-3 py-3 text-gray-500 text-xs hidden sm:table-cell">{{ f.weight_class or '—' }}</td>
+          <td class="px-3 py-3 hidden sm:table-cell">
+            {% if f.style_archetype %}
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-medium border {{ f.style_archetype | archetype_style }}">
+              {{ f.style_archetype | replace('_', ' ') | title }}
+            </span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="px-3 py-3 text-right font-bold text-red-400">
+            {{ (f.finish_rate * 100) | round | int if f.finish_rate else '—' }}%
+          </td>
+          <td class="px-3 py-3 text-right text-gray-400 text-xs hidden md:table-cell">
+            {{ (f.ko_rate * 100) | round | int if f.ko_rate else '—' }}%
+          </td>
+          <td class="px-3 py-3 text-right text-gray-400 text-xs hidden md:table-cell">
+            {{ (f.sub_rate * 100) | round | int if f.sub_rate else '—' }}%
+          </td>
+          <td class="px-3 py-3 text-right font-semibold {{ f.career_fps | fps_color }}">
+            {{ f.career_fps | fmt_fps }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── FPS Leaderboard ─────────────────────────────────────────────────────── -->
+{% if leaderboard %}
+<div class="bg-gray-800 border border-gray-700/50 rounded-xl">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700/50">
+    <div class="flex items-center gap-2">
+      <svg class="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+      </svg>
+      <h3 class="text-sm font-semibold text-gray-200">Career FPS Leaderboard (Top 25)</h3>
+    </div>
+    <a href="/fighters" class="text-xs text-red-400 hover:text-red-300 font-medium">Full roster →</a>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-xs text-gray-500 border-b border-gray-700/30">
+          <th class="px-5 py-3 font-medium">Rank</th>
+          <th class="px-3 py-3 font-medium">Fighter</th>
+          <th class="px-3 py-3 font-medium hidden sm:table-cell">Weight Class</th>
+          <th class="px-3 py-3 font-medium hidden sm:table-cell">Style</th>
+          <th class="px-3 py-3 font-medium hidden md:table-cell">Record</th>
+          <th class="px-3 py-3 font-medium text-right">FPS</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-700/20">
+        {% for f in leaderboard %}
+        <tr class="hover:bg-gray-700/30 transition-colors group">
+          <td class="px-5 py-3 text-sm font-bold
+                     {% if loop.index == 1 %}text-amber-400
+                     {% elif loop.index == 2 %}text-gray-400
+                     {% elif loop.index == 3 %}text-orange-500
+                     {% else %}text-gray-600{% endif %}">
+            {{ loop.index }}
+          </td>
+          <td class="px-3 py-3">
+            <a href="/fighters/{{ f.id }}" class="font-semibold text-gray-100 hover:text-white group-hover:underline">{{ f.name }}</a>
+          </td>
+          <td class="px-3 py-3 text-gray-500 text-xs hidden sm:table-cell">{{ f.weight_class or '—' }}</td>
+          <td class="px-3 py-3 hidden sm:table-cell">
+            {% if f.style_archetype %}
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-medium border {{ f.style_archetype | archetype_style }}">
+              {{ f.style_archetype | replace('_', ' ') | title }}
+            </span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="px-3 py-3 text-gray-400 text-xs hidden md:table-cell">
+            {{ f.ufc_wins }}-{{ f.ufc_losses }} ({{ f.ufc_appearances }} fights)
+          </td>
+          <td class="px-3 py-3 text-right font-bold text-lg {{ f.career_fps | fps_color }}">
+            {{ f.career_fps | fmt_fps }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Empty state ────────────────────────────────────────────────────────── -->
+{% if not top_finishers and not leaderboard %}
+<div class="flex flex-col items-center justify-center py-20 text-center">
+  <svg class="w-16 h-16 text-gray-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+  </svg>
+  <p class="text-gray-400 font-medium">No analytics data available</p>
+  <p class="text-sm text-gray-600 mt-1">Run the UFC data pipeline to populate fighter data.</p>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const archetypeData = {{ archetype_dist_json }};
+const methodData    = {{ method_dist_json }};
+const tierData      = {{ fps_tier_dist_json }};
+const weightData    = {{ weight_class_dist_json }};
+
+const chartDefaults = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: {
+      position: 'right',
+      labels: { color: '#9ca3af', font: { size: 11 }, padding: 10, boxWidth: 12 }
+    },
+    tooltip: {
+      backgroundColor: '#1f2937',
+      borderColor: '#374151',
+      borderWidth: 1,
+      titleColor: '#f9fafb',
+      bodyColor: '#d1d5db',
+    }
+  }
+};
+
+const COLORS = [
+  '#ef4444','#3b82f6','#8b5cf6','#f59e0b','#10b981',
+  '#06b6d4','#ec4899','#6366f1','#84cc16','#f97316',
+  '#14b8a6','#a78bfa',
+];
+
+function makeDonut(id, data, labelKey = 'label') {
+  const el = document.getElementById(id);
+  if (!el || !data.length) return;
+  new Chart(el.getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: data.map(d => d[labelKey] || d.label),
+      datasets: [{ data: data.map(d => d.count), backgroundColor: COLORS, borderColor: '#111827', borderWidth: 2, hoverOffset: 4 }]
+    },
+    options: { ...chartDefaults, cutout: '55%' }
+  });
+}
+
+function makeBar(id, data, labelKey = 'label') {
+  const el = document.getElementById(id);
+  if (!el || !data.length) return;
+  new Chart(el.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d[labelKey] || d.label),
+      datasets: [{
+        data: data.map(d => d.count),
+        backgroundColor: COLORS.map(c => c + '90'),
+        borderColor: COLORS,
+        borderWidth: 1.5,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      ...chartDefaults,
+      plugins: { ...chartDefaults.plugins, legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: '#374151' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+makeDonut('archetypeChart', archetypeData);
+makeDonut('methodChart', methodData);
+makeDonut('tierChart', tierData);
+makeBar('weightChart', weightData);
+</script>
+{% endblock %}

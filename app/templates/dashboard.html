@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- ── DB Warning banner ──────────────────────────────────────────────────── -->
+{% if not db_connected %}
+<div class="mb-6 flex items-start gap-3 rounded-xl border border-yellow-600/30 bg-yellow-600/10 px-4 py-3 text-sm text-yellow-300">
+  <svg class="mt-0.5 w-5 h-5 flex-shrink-0 text-yellow-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+  </svg>
+  <div>
+    <div class="font-semibold">Database not connected</div>
+    <div class="text-yellow-400/70 mt-0.5">Set <code class="font-mono bg-yellow-600/20 px-1 rounded">SUPABASE_URL</code> and <code class="font-mono bg-yellow-600/20 px-1 rounded">SUPABASE_SERVICE_KEY</code> env vars, then restart the server.</div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Stats grid ─────────────────────────────────────────────────────────── -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+
+  {% set stat_cards = [
+    ('UFC Fighters', stats.fighters, 'Tracked with FPS scores', '#10b981', 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0'),
+    ('UFC Fights', stats.fights, 'In scoring database', '#3b82f6', 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'),
+    ('Vision Jobs', stats.jobs, 'CV analysis pipeline', '#f59e0b', 'M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z'),
+    ('Roster', stats.scraped, 'Scraped fighters', '#8b5cf6', 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4'),
+  ] %}
+
+  {% for label, value, sub, color, icon_path in stat_cards %}
+  <div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5 flex flex-col gap-3 hover:border-gray-600 transition-colors">
+    <div class="flex items-center justify-between">
+      <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">{{ label }}</span>
+      <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: {{ color }}20">
+        <svg class="w-4 h-4" style="color: {{ color }}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="{{ icon_path }}"/>
+        </svg>
+      </div>
+    </div>
+    <div>
+      <div class="text-3xl font-bold text-gray-100">{{ "{:,}".format(value) }}</div>
+      <div class="text-xs text-gray-500 mt-1">{{ sub }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ── Two-column layout ──────────────────────────────────────────────────── -->
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+  <!-- FPS Leaderboard -->
+  <div class="bg-gray-800 border border-gray-700/50 rounded-xl">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700/50">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+        </svg>
+        <h2 class="text-sm font-semibold text-gray-200">FPS Leaderboard</h2>
+      </div>
+      <a href="/fighters" class="text-xs text-red-400 hover:text-red-300 font-medium">View all →</a>
+    </div>
+
+    {% if top_fighters %}
+    <div class="divide-y divide-gray-700/50">
+      {% for f in top_fighters %}
+      <a href="/fighters/{{ f.id }}" class="flex items-center gap-4 px-5 py-3.5 hover:bg-gray-700/40 transition-colors group">
+        <!-- Rank -->
+        <span class="w-6 text-center text-xs font-bold
+                     {% if loop.index == 1 %}text-amber-400
+                     {% elif loop.index == 2 %}text-gray-400
+                     {% elif loop.index == 3 %}text-orange-500
+                     {% else %}text-gray-600{% endif %}">
+          {{ loop.index }}
+        </span>
+
+        <!-- Fighter info -->
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-semibold text-gray-100 group-hover:text-white truncate">{{ f.name }}</div>
+          <div class="flex items-center gap-2 mt-0.5">
+            <span class="text-xs text-gray-500">{{ f.weight_class or '—' }}</span>
+            {% if f.style_archetype %}
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-medium border {{ f.style_archetype | archetype_style }}">
+              {{ f.style_archetype | replace('_', ' ') | title }}
+            </span>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Record -->
+        <div class="text-xs text-gray-500 text-right hidden sm:block">
+          {{ f.ufc_wins }}-{{ f.ufc_losses }}{% if f.ufc_draws %}-{{ f.ufc_draws }}{% endif %}
+        </div>
+
+        <!-- FPS score -->
+        <div class="text-right flex-shrink-0 w-14">
+          <div class="text-base font-bold {{ f.career_fps | fps_color }}">{{ f.career_fps | fmt_fps }}</div>
+          <div class="text-[10px] text-gray-600">FPS</div>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="px-5 py-12 text-center">
+      <svg class="w-10 h-10 text-gray-700 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+      </svg>
+      <p class="text-sm text-gray-500">No fighter data. Run the UFC data pipeline first.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Recent Vision Jobs -->
+  <div class="bg-gray-800 border border-gray-700/50 rounded-xl">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700/50">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        </svg>
+        <h2 class="text-sm font-semibold text-gray-200">Recent Vision Jobs</h2>
+      </div>
+      <a href="/vision" class="text-xs text-red-400 hover:text-red-300 font-medium">View all →</a>
+    </div>
+
+    {% if recent_jobs %}
+    <div class="divide-y divide-gray-700/50">
+      {% for job in recent_jobs %}
+      <a href="/vision/{{ job.id }}" class="flex items-start gap-4 px-5 py-3.5 hover:bg-gray-700/40 transition-colors group">
+        <!-- Status dot -->
+        <div class="mt-1 flex-shrink-0">
+          {% if job.status == 'done' %}
+            <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+          {% elif job.status == 'running' %}
+            <div class="w-2 h-2 rounded-full bg-blue-500 pulse-dot"></div>
+          {% elif job.status == 'error' %}
+            <div class="w-2 h-2 rounded-full bg-red-500"></div>
+          {% else %}
+            <div class="w-2 h-2 rounded-full bg-yellow-500"></div>
+          {% endif %}
+        </div>
+
+        <!-- Job info -->
+        <div class="flex-1 min-w-0">
+          <div class="text-sm text-gray-200 truncate font-medium group-hover:text-white">
+            {{ job.video_source | truncate(45) }}
+          </div>
+          <div class="flex items-center gap-3 mt-1">
+            <span class="text-[11px] px-1.5 py-0.5 rounded border {{ job.status | status_style }}">
+              {{ job.status | upper }}
+            </span>
+            {% if job.frames_sampled %}
+              <span class="text-[11px] text-gray-500">{{ job.frames_sampled }} frames</span>
+            {% endif %}
+            {% if job.source_type %}
+              <span class="text-[11px] text-gray-600">{{ job.source_type }}</span>
+            {% endif %}
+          </div>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="px-5 py-12 text-center">
+      <svg class="w-10 h-10 text-gray-700 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+      </svg>
+      <p class="text-sm text-gray-500">No vision jobs yet.</p>
+      <a href="/vision" class="mt-2 inline-block text-xs text-red-400 hover:text-red-300">Submit your first job →</a>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- ── Quick actions ──────────────────────────────────────────────────────── -->
+<div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+  <a href="/scout" class="group flex items-center gap-4 bg-gray-800 border border-gray-700/50 hover:border-gray-600 rounded-xl p-4 transition-all hover:bg-gray-750">
+    <div class="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center group-hover:bg-emerald-500/20 transition-colors">
+      <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
+      </svg>
+    </div>
+    <div>
+      <div class="text-sm font-semibold text-gray-200 group-hover:text-white">Scout an Opponent</div>
+      <div class="text-xs text-gray-500">Get FPS profile + tendencies</div>
+    </div>
+  </a>
+
+  <a href="/simulate" class="group flex items-center gap-4 bg-gray-800 border border-gray-700/50 hover:border-gray-600 rounded-xl p-4 transition-all hover:bg-gray-750">
+    <div class="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center group-hover:bg-red-500/20 transition-colors">
+      <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+      </svg>
+    </div>
+    <div>
+      <div class="text-sm font-semibold text-gray-200 group-hover:text-white">Run Simulation</div>
+      <div class="text-xs text-gray-500">Monte Carlo fight prediction</div>
+    </div>
+  </a>
+
+  <a href="/vision" class="group flex items-center gap-4 bg-gray-800 border border-gray-700/50 hover:border-gray-600 rounded-xl p-4 transition-all hover:bg-gray-750">
+    <div class="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
+      <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+      </svg>
+    </div>
+    <div>
+      <div class="text-sm font-semibold text-gray-200 group-hover:text-white">Analyze Footage</div>
+      <div class="text-xs text-gray-500">Submit video to vision pipeline</div>
+    </div>
+  </a>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<nav class="text-xs text-gray-500 mt-1">
+  <a href="/vision" class="hover:text-gray-300">Vision Jobs</a>
+  <span class="mx-1.5">›</span>
+  <span class="text-gray-400 font-mono">{{ job.id[:8] }}…</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Job header ──────────────────────────────────────────────────────────── -->
+<div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5 mb-6">
+  <div class="flex flex-col sm:flex-row sm:items-start gap-4">
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-3 flex-wrap mb-2">
+        <span class="px-2.5 py-1 rounded-lg text-xs font-bold border {{ job.status | status_style }}">
+          {{ job.status | upper }}
+        </span>
+        <span class="text-xs text-gray-500 capitalize bg-gray-700 px-2 py-0.5 rounded">
+          {{ job.source_type }}
+        </span>
+      </div>
+      <div class="text-sm text-gray-300 font-mono break-all">{{ job.video_source }}</div>
+      {% if job.error_msg %}
+      <div class="mt-2 text-sm text-red-400 flex items-start gap-2">
+        <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        <span>{{ job.error_msg }}</span>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Job stats -->
+    <div class="flex gap-6 text-center flex-shrink-0">
+      {% if job.frames_sampled %}
+      <div>
+        <div class="text-xl font-bold text-gray-100">{{ "{:,}".format(job.frames_sampled) }}</div>
+        <div class="text-[10px] text-gray-500 mt-0.5 uppercase tracking-wide">Frames</div>
+      </div>
+      {% endif %}
+      {% if job.duration_secs %}
+      <div>
+        <div class="text-xl font-bold text-gray-100">{{ "%.0f" | format(job.duration_secs) }}s</div>
+        <div class="text-[10px] text-gray-500 mt-0.5 uppercase tracking-wide">Duration</div>
+      </div>
+      {% endif %}
+      {% if events %}
+      <div>
+        <div class="text-xl font-bold text-gray-100">{{ events | length }}</div>
+        <div class="text-[10px] text-gray-500 mt-0.5 uppercase tracking-wide">Events</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="flex flex-wrap gap-4 mt-4 pt-4 border-t border-gray-700/50 text-xs text-gray-500">
+    {% if job.created_at %}
+    <span>Created: <span class="text-gray-400">{{ job.created_at[:16].replace('T', ' ') }}</span></span>
+    {% endif %}
+    {% if job.updated_at %}
+    <span>Updated: <span class="text-gray-400">{{ job.updated_at[:16].replace('T', ' ') }}</span></span>
+    {% endif %}
+    <span class="font-mono text-gray-600">{{ job.id }}</span>
+  </div>
+</div>
+
+<!-- ── Fight event summary ──────────────────────────────────────────────────── -->
+{% if summary %}
+<div class="bg-gray-800 border border-gray-700/50 rounded-xl p-5 mb-6">
+  <h3 class="text-sm font-semibold text-gray-200 mb-4">Fight Event Summary</h3>
+
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+    {% set stat_items = [
+      ('Punches Landed', summary.get('punches_landed'), 'text-red-400'),
+      ('Kicks Landed', summary.get('kicks_attempted'), 'text-orange-400'),
+      ('Knockdowns', summary.get('knockdowns'), 'text-yellow-400'),
+      ('Takedowns', summary.get('takedowns'), 'text-blue-400'),
+      ('Clinch Entries', summary.get('clinch_entries'), 'text-purple-400'),
+      ('Sub Attempts', summary.get('submission_attempts'), 'text-cyan-400'),
+      ('Sweeps', summary.get('sweeps'), 'text-emerald-400'),
+      ('Pressure Score', summary.get('pressure_score'), 'text-pink-400'),
+      ('Aggression', summary.get('aggression_score'), 'text-red-400'),
+      ('Strike Accuracy', summary.get('strike_accuracy'), 'text-green-400'),
+    ] %}
+
+    {% for label, value, color_class in stat_items %}
+    {% if value is not none %}
+    <div class="text-center p-3 bg-gray-700/40 rounded-lg">
+      <div class="text-xl font-bold {{ color_class }}">
+        {% if value is number and value < 1.1 and value > 0 %}
+          {{ "%.0f" | format(value * 100) }}%
+        {% else %}
+          {{ "%.0f" | format(value|float) if value else '0' }}
+        {% endif %}
+      </div>
+      <div class="text-[10px] text-gray-500 mt-1">{{ label }}</div>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- Time in positions -->
+  {% set pos_items = [
+    ('Guard', summary.get('time_in_guard')),
+    ('Side Control', summary.get('time_in_side_control')),
+    ('Back Control', summary.get('time_in_back_control')),
+    ('Clinch', summary.get('time_in_clinch')),
+  ] %}
+  {% if pos_items | selectattr('1') | list %}
+  <div class="mt-4 pt-4 border-t border-gray-700">
+    <div class="text-xs text-gray-500 mb-3 uppercase tracking-wide">Time in Position</div>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {% for label, secs in pos_items %}
+      {% if secs is not none %}
+      <div class="flex items-center justify-between bg-gray-700/30 rounded px-3 py-2">
+        <span class="text-xs text-gray-400">{{ label }}</span>
+        <span class="text-xs font-semibold text-gray-200">{{ "%.0f" | format(secs|float) }}s</span>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- ── Fight events timeline ──────────────────────────────────────────────── -->
+{% if events %}
+<div class="bg-gray-800 border border-gray-700/50 rounded-xl">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700/50">
+    <h3 class="text-sm font-semibold text-gray-200">Event Timeline</h3>
+    <span class="text-xs text-gray-500">{{ events | length }} events</span>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-xs text-gray-500 border-b border-gray-700/30">
+          <th class="px-5 py-3 font-medium">Time</th>
+          <th class="px-3 py-3 font-medium">Event Type</th>
+          <th class="px-3 py-3 font-medium hidden sm:table-cell">Limb</th>
+          <th class="px-3 py-3 font-medium hidden sm:table-cell">Target</th>
+          <th class="px-3 py-3 font-medium hidden md:table-cell">Outcome</th>
+          <th class="px-3 py-3 font-medium hidden md:table-cell">Position</th>
+          <th class="px-3 py-3 font-medium text-right">Conf.</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-700/20">
+        {% for event in events %}
+        <tr class="hover:bg-gray-700/20 transition-colors">
+          <td class="px-5 py-2.5">
+            <span class="text-xs font-mono text-amber-400 font-semibold">
+              {{ "%ds" | format(event.timestamp_secs|int) }}
+            </span>
+          </td>
+          <td class="px-3 py-2.5">
+            {% set et = event.event_type | replace('_', ' ') %}
+            {% set event_color =
+               'text-red-400' if 'punch' in event.event_type or 'strike' in event.event_type or 'ko' in event.event_type or 'knockdown' in event.event_type
+               else 'text-blue-400' if 'takedown' in event.event_type or 'guard' in event.event_type or 'control' in event.event_type or 'sweep' in event.event_type
+               else 'text-purple-400' if 'submission' in event.event_type
+               else 'text-orange-400' if 'kick' in event.event_type or 'clinch' in event.event_type
+               else 'text-gray-300'
+            %}
+            <span class="text-xs font-medium {{ event_color }}">{{ et | title }}</span>
+          </td>
+          <td class="px-3 py-2.5 hidden sm:table-cell">
+            <span class="text-xs text-gray-400 capitalize">{{ event.limb or '—' }}</span>
+          </td>
+          <td class="px-3 py-2.5 hidden sm:table-cell">
+            <span class="text-xs text-gray-400 capitalize">{{ event.target_zone or '—' }}</span>
+          </td>
+          <td class="px-3 py-2.5 hidden md:table-cell">
+            {% if event.outcome == 'landed' %}
+              <span class="text-xs text-emerald-400">Landed</span>
+            {% elif event.outcome == 'blocked' %}
+              <span class="text-xs text-yellow-400">Blocked</span>
+            {% elif event.outcome == 'missed' %}
+              <span class="text-xs text-gray-500">Missed</span>
+            {% elif event.outcome %}
+              <span class="text-xs text-gray-400 capitalize">{{ event.outcome }}</span>
+            {% else %}
+              <span class="text-xs text-gray-600">—</span>
+            {% endif %}
+          </td>
+          <td class="px-3 py-2.5 hidden md:table-cell">
+            <span class="text-xs text-gray-500 capitalize">{{ event.position | replace('_', ' ') if event.position else '—' }}</span>
+          </td>
+          <td class="px-3 py-2.5 text-right">
+            {% if event.confidence %}
+            <span class="text-xs text-gray-500">{{ "%.0f" | format(event.confidence * 100) }}%</span>
+            {% else %}
+            <span class="text-xs text-gray-700">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% elif job.status == 'done' %}
+<div class="text-center py-12">
+  <svg class="w-12 h-12 text-gray-700 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+  </svg>
+  <p class="text-gray-500">No events were detected for this job.</p>
+</div>
+
+{% elif job.status == 'pending' %}
+<div class="text-center py-12">
+  <div class="w-12 h-12 rounded-full border-2 border-yellow-500/30 border-t-yellow-400 animate-spin mx-auto mb-3"></div>
+  <p class="text-gray-400 font-medium">Job pending</p>
+  <p class="text-sm text-gray-600 mt-1">Waiting to be picked up by the vision pipeline.</p>
+</div>
+
+{% elif job.status == 'running' %}
+<div class="text-center py-12">
+  <div class="w-12 h-12 rounded-full border-2 border-blue-500/30 border-t-blue-400 animate-spin mx-auto mb-3"></div>
+  <p class="text-gray-400 font-medium">Job is running…</p>
+  <p class="text-sm text-gray-600 mt-1">The vision pipeline is currently analyzing this footage.</p>
+</div>
+{% endif %}
+
+{% endblock %}

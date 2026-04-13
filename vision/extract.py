@@ -87,6 +87,10 @@ def _iter_frames_ffmpeg(
         log.warning("ffprobe failed for %s: %s", video_path.name, exc)
         return
 
+    if width <= 0 or height <= 0:
+        log.warning("ffprobe returned invalid dimensions (%dx%d) for %s — skipping", width, height, video_path.name)
+        return
+
     frame_size = width * height * 3  # BGR24 bytes per frame
     fps_out    = 1.0 / sample_interval_secs  # e.g. 0.5 for 2-s interval
 

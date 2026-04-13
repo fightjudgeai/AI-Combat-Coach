@@ -3,12 +3,40 @@ import asyncio
 from bs4 import BeautifulSoup
 import json
 import time
+import logging
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 BASE_URL = "http://ufcstats.com"
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent  # AI-Combat-Coach/
 CACHE_DIR = _REPO_ROOT / "data" / "ufc_raw"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+async def _get_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    max_retries: int = 3,
+    base_delay: float = 2.0,
+) -> httpx.Response:
+    """GET with exponential-backoff retry on transient errors (5xx, timeout, network)."""
+    last_exc: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            resp = await client.get(url)
+            if resp.status_code < 500:
+                return resp
+            log.warning("HTTP %d for %s (attempt %d/%d)", resp.status_code, url, attempt + 1, max_retries)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            log.warning("Request error for %s (attempt %d/%d): %s", url, attempt + 1, max_retries, exc)
+            last_exc = exc
+        wait = base_delay * (2 ** attempt)
+        await asyncio.sleep(wait)
+    if last_exc:
+        raise last_exc
+    raise httpx.HTTPStatusError(f"Server error after {max_retries} retries", request=None, response=None)
+
 
 class UFCStatsScraper:
     """
@@ -34,7 +62,7 @@ class UFCStatsScraper:
             return json.loads(cache_path.read_text())
 
         url = f"{BASE_URL}/statistics/events/completed?page=all"
-        resp = await self.client.get(url)
+        resp = await _get_with_retry(self.client, url)
         soup = BeautifulSoup(resp.text, 'html.parser')
 
         events = []
@@ -58,7 +86,7 @@ class UFCStatsScraper:
         if cache_file.exists():
             return json.loads(cache_file.read_text())
 
-        resp = await self.client.get(event_url)
+        resp = await _get_with_retry(self.client, event_url)
         soup = BeautifulSoup(resp.text, 'html.parser')
 
         fights = []
@@ -91,7 +119,7 @@ class UFCStatsScraper:
         if cache_file.exists():
             return json.loads(cache_file.read_text())
 
-        resp = await self.client.get(fight_url)
+        resp = await _get_with_retry(self.client, fight_url)
         soup = BeautifulSoup(resp.text, 'html.parser')
 
         result = {
