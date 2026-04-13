@@ -44,7 +44,10 @@ export default function LoginPage() {
             <div className="w-10 h-10 bg-[#DC2626] flex items-center justify-center">
               <Lightning weight="fill" className="text-white" size={24} />
             </div>
-            <span className="font-heading text-3xl uppercase tracking-wide">FightPromo</span>
+            <div>
+              <span className="font-heading text-2xl uppercase tracking-wide block leading-none">FightJudge</span>
+              <span className="font-mono text-[10px] uppercase tracking-widest text-[#D4AF37]">Pro</span>
+            </div>
           </div>
 
           <h2 className="font-heading text-4xl uppercase mb-2">Sign In</h2>

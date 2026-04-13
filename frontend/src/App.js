@@ -14,6 +14,11 @@ import FightCardPage from "./pages/FightCardPage";
 import TasksPage from "./pages/TasksPage";
 import FinancePage from "./pages/FinancePage";
 import AIToolsPage from "./pages/AIToolsPage";
+import SponsorsPage from "./pages/SponsorsPage";
+import ChecklistsPage from "./pages/ChecklistsPage";
+import FightNightLivePage from "./pages/FightNightLivePage";
+import TicketingPage from "./pages/TicketingPage";
+import TicketSuccessPage from "./pages/TicketSuccessPage";
 
 function App() {
   return (
@@ -29,6 +34,11 @@ function App() {
           <Route path="/tasks" element={<ProtectedRoute><Layout><TasksPage /></Layout></ProtectedRoute>} />
           <Route path="/finance" element={<ProtectedRoute><Layout><FinancePage /></Layout></ProtectedRoute>} />
           <Route path="/ai-tools" element={<ProtectedRoute><Layout><AIToolsPage /></Layout></ProtectedRoute>} />
+          <Route path="/sponsors" element={<ProtectedRoute><Layout><SponsorsPage /></Layout></ProtectedRoute>} />
+          <Route path="/checklists" element={<ProtectedRoute><Layout><ChecklistsPage /></Layout></ProtectedRoute>} />
+          <Route path="/live" element={<ProtectedRoute><Layout><FightNightLivePage /></Layout></ProtectedRoute>} />
+          <Route path="/tickets" element={<ProtectedRoute><Layout><TicketingPage /></Layout></ProtectedRoute>} />
+          <Route path="/tickets/success" element={<ProtectedRoute><Layout><TicketSuccessPage /></Layout></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

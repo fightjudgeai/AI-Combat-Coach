@@ -352,6 +352,163 @@ class FightPromoAPITester:
         print("✅ Bouts CRUD operations completed successfully")
         return True
 
+    def test_sponsors_crud(self):
+        """Test sponsors CRUD operations"""
+        print("\n=== TESTING SPONSORS CRUD ===")
+        
+        # List sponsors
+        success, sponsors = self.run_test("List Sponsors", "GET", "sponsors", 200)
+        if not success:
+            return False
+            
+        initial_count = len(sponsors)
+        print(f"✅ Found {initial_count} existing sponsors")
+        
+        # Create sponsor
+        test_sponsor = {
+            "name": "Test Sponsor Corp",
+            "contact_name": "John Test",
+            "contact_email": "john@testsponsor.com",
+            "phone": "555-0123",
+            "tier": "gold",
+            "amount": 25000,
+            "status": "confirmed",
+            "notes": "Test sponsor for API testing"
+        }
+        
+        success, created_sponsor = self.run_test("Create Sponsor", "POST", "sponsors", 200, data=test_sponsor)
+        if not success:
+            return False
+            
+        sponsor_id = created_sponsor.get('_id')
+        if not sponsor_id:
+            print("❌ No sponsor ID returned from creation")
+            return False
+            
+        # Update sponsor
+        updated_data = test_sponsor.copy()
+        updated_data['amount'] = 30000
+        success, updated_sponsor = self.run_test("Update Sponsor", "PUT", f"sponsors/{sponsor_id}", 200, data=updated_data)
+        if not success:
+            return False
+            
+        # Delete sponsor
+        success, _ = self.run_test("Delete Sponsor", "DELETE", f"sponsors/{sponsor_id}", 200)
+        if not success:
+            return False
+            
+        print("✅ Sponsors CRUD operations completed successfully")
+        return True
+
+    def test_checklist_templates(self):
+        """Test checklist templates endpoints"""
+        print("\n=== TESTING CHECKLIST TEMPLATES ===")
+        
+        # List templates
+        success, templates = self.run_test("List Checklist Templates", "GET", "checklists/templates", 200)
+        if not success:
+            return False
+            
+        print(f"✅ Found {len(templates)} checklist templates")
+        
+        # Verify seeded templates exist
+        expected_types = ['daily', 'weekly', 'monthly', 'event_day']
+        found_types = [t.get('type') for t in templates]
+        missing_types = [t for t in expected_types if t not in found_types]
+        
+        if missing_types:
+            print(f"⚠️  Missing template types: {missing_types}")
+        else:
+            print("✅ All expected template types found")
+            
+        # Test applying checklist if we have events and templates
+        if templates:
+            success, events = self.run_test("Get Events for Checklist", "GET", "events", 200)
+            if success and events:
+                template_id = templates[0]['_id']
+                event_id = events[0]['_id']
+                success, result = self.run_test("Apply Checklist", "POST", f"checklists/apply/{template_id}?event_id={event_id}", 200)
+                if success:
+                    print(f"✅ Applied checklist - created {result.get('created', 0)} tasks")
+                else:
+                    print("⚠️  Failed to apply checklist")
+            
+        return True
+
+    def test_live_data(self):
+        """Test Fight Night Live endpoint"""
+        print("\n=== TESTING FIGHT NIGHT LIVE ===")
+        
+        # Get events first
+        success, events = self.run_test("Get Events for Live", "GET", "events", 200)
+        if not success or not events:
+            print("❌ No events available for live testing")
+            return False
+            
+        event_id = events[0]['_id']
+        
+        # Test live data endpoint
+        success, live_data = self.run_test("Get Live Data", "GET", f"live/{event_id}", 200)
+        if not success:
+            return False
+            
+        # Verify live data structure
+        required_fields = ['event', 'bouts', 'financial', 'tickets_sold', 'tasks', 'total_bouts', 'completed_bouts']
+        missing_fields = [field for field in required_fields if field not in live_data]
+        
+        if missing_fields:
+            print(f"❌ Missing live data fields: {missing_fields}")
+            return False
+        else:
+            print("✅ Live data structure complete")
+            return True
+
+    def test_ticketing_endpoints(self):
+        """Test ticketing endpoints"""
+        print("\n=== TESTING TICKETING ===")
+        
+        # Get ticket packages
+        success, packages = self.run_test("Get Ticket Packages", "GET", "tickets/packages", 200)
+        if not success:
+            return False
+            
+        # Verify expected packages
+        expected_packages = ['general', 'vip', 'ringside', 'ppv']
+        missing_packages = [pkg for pkg in expected_packages if pkg not in packages]
+        
+        if missing_packages:
+            print(f"❌ Missing ticket packages: {missing_packages}")
+            return False
+        else:
+            print(f"✅ Found all {len(packages)} expected ticket packages")
+            
+        # Get ticket history
+        success, history = self.run_test("Get Ticket History", "GET", "tickets/history", 200)
+        if success:
+            print(f"✅ Ticket history accessible ({len(history)} records)")
+        
+        return True
+
+    def test_financial_analytics(self):
+        """Test financial analytics endpoint"""
+        print("\n=== TESTING FINANCIAL ANALYTICS ===")
+        
+        # Test analytics endpoint
+        success, analytics = self.run_test("Financial Analytics", "GET", "financials/analytics", 200)
+        if not success:
+            return False
+            
+        # Verify analytics structure
+        required_fields = ['by_event', 'by_category', 'monthly']
+        missing_fields = [field for field in required_fields if field not in analytics]
+        
+        if missing_fields:
+            print(f"❌ Missing analytics fields: {missing_fields}")
+            return False
+        else:
+            print("✅ Financial analytics structure complete")
+            return True
+
     def test_ai_endpoints(self):
         """Test AI endpoints (forms should load, don't test actual AI responses)"""
         print("\n=== TESTING AI ENDPOINTS ===")
@@ -379,6 +536,14 @@ class FightPromoAPITester:
         success, response = self.run_test("AI Matchup Suggestions", "POST", "ai/matchup-suggestions", 200, data=test_matchup_data)
         if not success:
             print("ℹ️  AI Matchup endpoint exists but may have AI integration issues")
+            
+        # Test smart reminders
+        success, events = self.run_test("Get Events for AI", "GET", "events", 200)
+        if success and events:
+            test_reminder_data = {"event_id": events[0]['_id']}
+            success, response = self.run_test("AI Smart Reminders", "POST", "ai/smart-reminders", 200, data=test_reminder_data)
+            if not success:
+                print("ℹ️  AI Smart Reminders endpoint exists but may have AI integration issues")
             
         print("✅ AI endpoints are accessible (actual AI responses may vary)")
         return True
@@ -417,6 +582,11 @@ def main():
         tester.test_tasks_crud,
         tester.test_financials_crud,
         tester.test_bouts_crud,
+        tester.test_sponsors_crud,
+        tester.test_checklist_templates,
+        tester.test_live_data,
+        tester.test_ticketing_endpoints,
+        tester.test_financial_analytics,
         tester.test_ai_endpoints,
         tester.test_logout
     ]

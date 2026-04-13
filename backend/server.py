@@ -11,13 +11,13 @@ from bson import ObjectId
 import os
 import logging
 import uuid
-import secrets
 import bcrypt
 import jwt
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionResponse, CheckoutStatusResponse, CheckoutSessionRequest
 
 # MongoDB
 mongo_url = os.environ['MONGO_URL']
@@ -29,9 +29,16 @@ JWT_ALGORITHM = "HS256"
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
-# Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# ── Ticket Packages (server-side only, prevents price manipulation) ──
+TICKET_PACKAGES = {
+    "general": {"name": "General Admission", "price": 65.00},
+    "vip": {"name": "VIP", "price": 150.00},
+    "ringside": {"name": "Ringside", "price": 350.00},
+    "ppv": {"name": "Pay-Per-View", "price": 29.99},
+}
 
 # ── Password helpers ──
 def hash_password(password: str) -> str:
@@ -141,6 +148,7 @@ class TaskInput(BaseModel):
     status: str = "pending"
     recurrence: str = "none"
     assigned_to: Optional[str] = None
+    category: str = "general"
 
 class FinancialInput(BaseModel):
     event_id: str
@@ -148,6 +156,30 @@ class FinancialInput(BaseModel):
     category: str
     amount: float
     description: str = ""
+
+class SponsorInput(BaseModel):
+    name: str
+    contact_name: str = ""
+    contact_email: str = ""
+    phone: str = ""
+    tier: str = "silver"
+    amount: float = 0
+    status: str = "prospect"
+    notes: str = ""
+    event_ids: List[str] = []
+
+class ChecklistTemplateInput(BaseModel):
+    name: str
+    type: str
+    items: List[dict] = []
+
+class BoutStatusInput(BaseModel):
+    status: str
+    result: str = ""
+    winner_id: str = ""
+    method: str = ""
+    round_ended: int = 0
+    time: str = ""
 
 class AIPromoInput(BaseModel):
     event_title: str
@@ -159,6 +191,15 @@ class AIPromoInput(BaseModel):
 class AIMatchupInput(BaseModel):
     weight_class: str
     event_id: Optional[str] = None
+
+class AISmartRemindersInput(BaseModel):
+    event_id: str
+
+class TicketCheckoutInput(BaseModel):
+    event_id: str
+    package_id: str
+    quantity: int = 1
+    origin_url: str
 
 # ── Auth Endpoints ──
 @api_router.post("/auth/register")
@@ -239,7 +280,6 @@ async def refresh_token(request: Request, response: Response):
 # ── Events ──
 @api_router.get("/events")
 async def list_events(user: dict = Depends(get_current_user)):
-    events = await db.events.find({}, {"_id": 1}).to_list(500)
     result = []
     async for ev in db.events.find({}):
         result.append(serialize_doc(ev))
@@ -318,7 +358,6 @@ async def list_bouts(event_id: Optional[str] = None, user: dict = Depends(get_cu
     result = []
     async for b in db.bouts.find(query).sort("bout_order", 1):
         bout = serialize_doc(b)
-        # Populate fighter names
         for key in ["fighter1_id", "fighter2_id"]:
             try:
                 fighter = await db.fighters.find_one({"_id": ObjectId(bout[key])})
@@ -348,6 +387,23 @@ async def update_bout(bout_id: str, input: BoutInput, user: dict = Depends(get_c
     b = await db.bouts.find_one({"_id": ObjectId(bout_id)})
     return serialize_doc(b)
 
+@api_router.patch("/bouts/{bout_id}/status")
+async def update_bout_status(bout_id: str, input: BoutStatusInput, user: dict = Depends(get_current_user)):
+    update = {"status": input.status, "updated_at": datetime.now(timezone.utc).isoformat()}
+    if input.result:
+        update["result"] = input.result
+    if input.winner_id:
+        update["winner_id"] = input.winner_id
+    if input.method:
+        update["method"] = input.method
+    if input.round_ended:
+        update["round_ended"] = input.round_ended
+    if input.time:
+        update["time"] = input.time
+    await db.bouts.update_one({"_id": ObjectId(bout_id)}, {"$set": update})
+    b = await db.bouts.find_one({"_id": ObjectId(bout_id)})
+    return serialize_doc(b)
+
 @api_router.delete("/bouts/{bout_id}")
 async def delete_bout(bout_id: str, user: dict = Depends(get_current_user)):
     await db.bouts.delete_one({"_id": ObjectId(bout_id)})
@@ -355,12 +411,14 @@ async def delete_bout(bout_id: str, user: dict = Depends(get_current_user)):
 
 # ── Tasks ──
 @api_router.get("/tasks")
-async def list_tasks(event_id: Optional[str] = None, status: Optional[str] = None, user: dict = Depends(get_current_user)):
+async def list_tasks(event_id: Optional[str] = None, status: Optional[str] = None, category: Optional[str] = None, user: dict = Depends(get_current_user)):
     query = {}
     if event_id:
         query["event_id"] = event_id
     if status:
         query["status"] = status
+    if category:
+        query["category"] = category
     result = []
     async for t in db.tasks.find(query).sort("due_date", 1):
         result.append(serialize_doc(t))
@@ -398,6 +456,83 @@ async def delete_task(task_id: str, user: dict = Depends(get_current_user)):
     await db.tasks.delete_one({"_id": ObjectId(task_id)})
     return {"message": "Task deleted"}
 
+# ── Checklist Templates ──
+@api_router.get("/checklists/templates")
+async def list_checklist_templates(user: dict = Depends(get_current_user)):
+    result = []
+    async for t in db.checklist_templates.find({}):
+        result.append(serialize_doc(t))
+    return result
+
+@api_router.post("/checklists/templates")
+async def create_checklist_template(input: ChecklistTemplateInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["created_by"] = user["_id"]
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.checklist_templates.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
+@api_router.delete("/checklists/templates/{template_id}")
+async def delete_checklist_template(template_id: str, user: dict = Depends(get_current_user)):
+    await db.checklist_templates.delete_one({"_id": ObjectId(template_id)})
+    return {"message": "Template deleted"}
+
+@api_router.post("/checklists/apply/{template_id}")
+async def apply_checklist(template_id: str, event_id: str, user: dict = Depends(get_current_user)):
+    template = await db.checklist_templates.find_one({"_id": ObjectId(template_id)})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    created = []
+    for item in template.get("items", []):
+        task_doc = {
+            "title": item.get("title", ""),
+            "description": item.get("description", ""),
+            "event_id": event_id,
+            "due_date": item.get("due_date", ""),
+            "priority": item.get("priority", "medium"),
+            "status": "pending",
+            "recurrence": item.get("recurrence", "none"),
+            "category": template.get("type", "general"),
+            "assigned_to": None,
+            "created_by": user["_id"],
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        res = await db.tasks.insert_one(task_doc)
+        task_doc["_id"] = str(res.inserted_id)
+        created.append(task_doc)
+    return {"created": len(created), "tasks": created}
+
+# ── Sponsors ──
+@api_router.get("/sponsors")
+async def list_sponsors(user: dict = Depends(get_current_user)):
+    result = []
+    async for s in db.sponsors.find({}):
+        result.append(serialize_doc(s))
+    return result
+
+@api_router.post("/sponsors")
+async def create_sponsor(input: SponsorInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["created_by"] = user["_id"]
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.sponsors.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
+@api_router.put("/sponsors/{sponsor_id}")
+async def update_sponsor(sponsor_id: str, input: SponsorInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.sponsors.update_one({"_id": ObjectId(sponsor_id)}, {"$set": doc})
+    s = await db.sponsors.find_one({"_id": ObjectId(sponsor_id)})
+    return serialize_doc(s)
+
+@api_router.delete("/sponsors/{sponsor_id}")
+async def delete_sponsor(sponsor_id: str, user: dict = Depends(get_current_user)):
+    await db.sponsors.delete_one({"_id": ObjectId(sponsor_id)})
+    return {"message": "Sponsor deleted"}
+
 # ── Financials ──
 @api_router.get("/financials")
 async def list_financials(event_id: Optional[str] = None, user: dict = Depends(get_current_user)):
@@ -432,6 +567,41 @@ async def financial_summary(user: dict = Depends(get_current_user)):
             expenses += f.get("amount", 0)
     return {"total_revenue": revenue, "total_expenses": expenses, "net": revenue - expenses}
 
+@api_router.get("/financials/analytics")
+async def financial_analytics(user: dict = Depends(get_current_user)):
+    by_event = {}
+    by_category = {}
+    monthly = {}
+    async for f in db.financials.find({}):
+        eid = f.get("event_id", "none")
+        cat = f.get("category", "Other")
+        amt = f.get("amount", 0)
+        ftype = f.get("type", "expense")
+        created = f.get("created_at", "")
+        month_key = created[:7] if created else "unknown"
+        if eid not in by_event:
+            by_event[eid] = {"revenue": 0, "expenses": 0}
+        if ftype == "revenue":
+            by_event[eid]["revenue"] += amt
+        else:
+            by_event[eid]["expenses"] += amt
+        if cat not in by_category:
+            by_category[cat] = 0
+        by_category[cat] += amt
+        if month_key not in monthly:
+            monthly[month_key] = {"revenue": 0, "expenses": 0}
+        if ftype == "revenue":
+            monthly[month_key]["revenue"] += amt
+        else:
+            monthly[month_key]["expenses"] += amt
+    events_lookup = {}
+    async for ev in db.events.find({}):
+        events_lookup[str(ev["_id"])] = ev.get("title", "Unknown")
+    event_breakdown = []
+    for eid, data in by_event.items():
+        event_breakdown.append({"event_id": eid, "event_name": events_lookup.get(eid, "Unknown"), "revenue": data["revenue"], "expenses": data["expenses"], "net": data["revenue"] - data["expenses"]})
+    return {"by_event": event_breakdown, "by_category": [{"category": k, "amount": v} for k, v in by_category.items()], "monthly": [{"month": k, "revenue": v["revenue"], "expenses": v["expenses"]} for k, v in sorted(monthly.items())]}
+
 # ── Dashboard Stats ──
 @api_router.get("/dashboard/stats")
 async def dashboard_stats(user: dict = Depends(get_current_user)):
@@ -440,6 +610,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     upcoming = await db.events.count_documents({"status": {"$in": ["planning", "announced", "confirmed"]}})
     tasks_pending = await db.tasks.count_documents({"status": "pending"})
     tasks_completed = await db.tasks.count_documents({"status": "completed"})
+    sponsors_count = await db.sponsors.count_documents({})
     revenue = 0
     expenses = 0
     async for f in db.financials.find({}):
@@ -447,6 +618,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
             revenue += f.get("amount", 0)
         else:
             expenses += f.get("amount", 0)
+    tickets_sold = await db.payment_transactions.count_documents({"payment_status": "paid"})
     recent_events = []
     async for ev in db.events.find({}).sort("created_at", -1).limit(5):
         recent_events.append(serialize_doc(ev))
@@ -456,11 +628,145 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
         "upcoming_events": upcoming,
         "tasks_pending": tasks_pending,
         "tasks_completed": tasks_completed,
+        "sponsors_count": sponsors_count,
         "total_revenue": revenue,
         "total_expenses": expenses,
         "net_profit": revenue - expenses,
+        "tickets_sold": tickets_sold,
         "recent_events": recent_events
     }
+
+# ── Fight Night Live ──
+@api_router.get("/live/{event_id}")
+async def fight_night_live(event_id: str, user: dict = Depends(get_current_user)):
+    ev = await db.events.find_one({"_id": ObjectId(event_id)})
+    if not ev:
+        raise HTTPException(status_code=404, detail="Event not found")
+    event_data = serialize_doc(ev)
+    bouts = []
+    async for b in db.bouts.find({"event_id": event_id}).sort("bout_order", 1):
+        bout = serialize_doc(b)
+        for key in ["fighter1_id", "fighter2_id"]:
+            try:
+                fighter = await db.fighters.find_one({"_id": ObjectId(bout[key])})
+                if fighter:
+                    bout[key.replace("_id", "_name")] = fighter.get("name", "Unknown")
+                    bout[key.replace("_id", "_nickname")] = fighter.get("nickname", "")
+                    bout[key.replace("_id", "_record")] = f"{fighter.get('wins',0)}-{fighter.get('losses',0)}-{fighter.get('draws',0)}"
+            except Exception:
+                pass
+        bouts.append(bout)
+    revenue = 0
+    expenses = 0
+    async for f in db.financials.find({"event_id": event_id}):
+        if f.get("type") == "revenue":
+            revenue += f.get("amount", 0)
+        else:
+            expenses += f.get("amount", 0)
+    tickets = await db.payment_transactions.count_documents({"metadata.event_id": event_id, "payment_status": "paid"})
+    tasks = []
+    async for t in db.tasks.find({"event_id": event_id}):
+        tasks.append(serialize_doc(t))
+    return {
+        "event": event_data,
+        "bouts": bouts,
+        "financial": {"revenue": revenue, "expenses": expenses, "net": revenue - expenses},
+        "tickets_sold": tickets,
+        "tasks": tasks,
+        "total_bouts": len(bouts),
+        "completed_bouts": len([b for b in bouts if b.get("status") == "completed"]),
+        "current_bout": next((b for b in bouts if b.get("status") == "in_progress"), None)
+    }
+
+# ── Stripe Ticketing ──
+@api_router.get("/tickets/packages")
+async def get_ticket_packages(user: dict = Depends(get_current_user)):
+    return TICKET_PACKAGES
+
+@api_router.post("/tickets/checkout")
+async def create_ticket_checkout(input: TicketCheckoutInput, request: Request, user: dict = Depends(get_current_user)):
+    if input.package_id not in TICKET_PACKAGES:
+        raise HTTPException(status_code=400, detail="Invalid ticket package")
+    package = TICKET_PACKAGES[input.package_id]
+    event = await db.events.find_one({"_id": ObjectId(input.event_id)})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    amount = package["price"] * input.quantity
+    origin = input.origin_url.rstrip("/")
+    success_url = f"{origin}/tickets/success?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{origin}/tickets"
+    api_key = os.environ.get("STRIPE_API_KEY", "")
+    host_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{host_url}api/webhook/stripe"
+    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    checkout_req = CheckoutSessionRequest(
+        amount=float(amount),
+        currency="usd",
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={"event_id": input.event_id, "package_id": input.package_id, "quantity": str(input.quantity), "user_id": user["_id"], "event_title": event.get("title", "")}
+    )
+    session = await stripe_checkout.create_checkout_session(checkout_req)
+    await db.payment_transactions.insert_one({
+        "session_id": session.session_id,
+        "user_id": user["_id"],
+        "email": user.get("email", ""),
+        "event_id": input.event_id,
+        "package_id": input.package_id,
+        "package_name": package["name"],
+        "quantity": input.quantity,
+        "amount": amount,
+        "currency": "usd",
+        "payment_status": "pending",
+        "metadata": {"event_id": input.event_id, "package_id": input.package_id, "quantity": str(input.quantity)},
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    return {"url": session.url, "session_id": session.session_id}
+
+@api_router.get("/tickets/status/{session_id}")
+async def check_ticket_status(session_id: str, request: Request, user: dict = Depends(get_current_user)):
+    api_key = os.environ.get("STRIPE_API_KEY", "")
+    host_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{host_url}api/webhook/stripe"
+    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    status = await stripe_checkout.get_checkout_status(session_id)
+    existing = await db.payment_transactions.find_one({"session_id": session_id})
+    if existing and existing.get("payment_status") != "paid":
+        await db.payment_transactions.update_one(
+            {"session_id": session_id},
+            {"$set": {"payment_status": status.payment_status, "status": status.status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+    return {"status": status.status, "payment_status": status.payment_status, "amount_total": status.amount_total, "currency": status.currency}
+
+@api_router.get("/tickets/history")
+async def ticket_history(user: dict = Depends(get_current_user)):
+    result = []
+    async for t in db.payment_transactions.find({"user_id": user["_id"]}, {"_id": 0}):
+        for k, v in t.items():
+            if isinstance(v, ObjectId):
+                t[k] = str(v)
+        result.append(t)
+    return result
+
+@api_router.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    body = await request.body()
+    sig = request.headers.get("Stripe-Signature", "")
+    try:
+        api_key = os.environ.get("STRIPE_API_KEY", "")
+        host_url = str(request.base_url).rstrip("/")
+        webhook_url = f"{host_url}api/webhook/stripe"
+        stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+        event = await stripe_checkout.handle_webhook(body, sig)
+        if event.payment_status == "paid":
+            await db.payment_transactions.update_one(
+                {"session_id": event.session_id, "payment_status": {"$ne": "paid"}},
+                {"$set": {"payment_status": "paid", "status": "complete", "updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return {"status": "error"}
 
 # ── AI Endpoints ──
 @api_router.post("/ai/generate-promo")
@@ -501,7 +807,45 @@ async def matchup_suggestions(input: AIMatchupInput, user: dict = Depends(get_cu
         logger.error(f"AI matchup suggestion error: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate matchup suggestions")
 
-# ── Users (for role management) ──
+@api_router.post("/ai/smart-reminders")
+async def smart_reminders(input: AISmartRemindersInput, user: dict = Depends(get_current_user)):
+    try:
+        event = await db.events.find_one({"_id": ObjectId(input.event_id)})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        tasks = []
+        async for t in db.tasks.find({"event_id": input.event_id}):
+            tasks.append({"title": t.get("title"), "status": t.get("status"), "due_date": t.get("due_date", ""), "priority": t.get("priority", "medium")})
+        bouts = await db.bouts.count_documents({"event_id": input.event_id})
+        fighters_in_event = set()
+        async for b in db.bouts.find({"event_id": input.event_id}):
+            fighters_in_event.add(b.get("fighter1_id"))
+            fighters_in_event.add(b.get("fighter2_id"))
+        chat = LlmChat(
+            api_key=os.environ.get("EMERGENT_LLM_KEY", ""),
+            session_id=f"reminders-{uuid.uuid4()}",
+            system_message="You are a combat sports event planning assistant. Analyze the event details and provide smart reminders, risk alerts, and action items. Be specific and actionable. Format as numbered list."
+        )
+        prompt = f"""Analyze this event and provide smart reminders and risk alerts:
+Event: {event.get('title')} on {event.get('date')} at {event.get('venue')}, {event.get('city')}
+Status: {event.get('status')}
+Budget: ${event.get('budget', 0):,.2f}
+Capacity: {event.get('capacity', 0)}
+Bouts scheduled: {bouts}
+Fighters involved: {len(fighters_in_event)}
+Current tasks: {len(tasks)} ({len([t for t in tasks if t['status']=='completed'])} completed, {len([t for t in tasks if t['status']=='pending'])} pending)
+
+Provide: 1) Risk alerts 2) Missing tasks 3) Timeline recommendations 4) Compliance reminders (licenses, medicals, insurance)"""
+        msg = UserMessage(text=prompt)
+        result = await chat.send_message(msg)
+        return {"reminders": result, "event_title": event.get("title")}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"AI smart reminders error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate smart reminders")
+
+# ── Users ──
 @api_router.get("/users")
 async def list_users(user: dict = Depends(get_current_user)):
     if user.get("role") != "admin":
@@ -529,18 +873,14 @@ async def seed_admin():
     if existing is None:
         hashed = hash_password(admin_password)
         await db.users.insert_one({
-            "email": admin_email,
-            "password_hash": hashed,
-            "name": "Admin",
-            "role": "admin",
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "email": admin_email, "password_hash": hashed, "name": "Admin",
+            "role": "admin", "created_at": datetime.now(timezone.utc).isoformat()
         })
         logger.info(f"Admin user seeded: {admin_email}")
     elif not verify_password(admin_password, existing["password_hash"]):
         await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
-        logger.info("Admin password updated")
 
-    # Seed sample data
+    # Seed sample data if empty
     if await db.fighters.count_documents({}) == 0:
         sample_fighters = [
             {"name": "Marcus 'The Hammer' Johnson", "nickname": "The Hammer", "weight_class": "Welterweight", "wins": 12, "losses": 3, "draws": 0, "status": "active", "age": 28, "height": "5'11\"", "reach": "74\"", "stance": "orthodox", "gym": "Iron Forge MMA", "created_at": datetime.now(timezone.utc).isoformat()},
@@ -551,22 +891,56 @@ async def seed_admin():
             {"name": "Sergei 'The Tank' Volkov", "nickname": "The Tank", "weight_class": "Heavyweight", "wins": 14, "losses": 3, "draws": 0, "status": "active", "age": 30, "height": "6'4\"", "reach": "80\"", "stance": "orthodox", "gym": "Ural Combat Club", "created_at": datetime.now(timezone.utc).isoformat()},
         ]
         await db.fighters.insert_many(sample_fighters)
-        logger.info("Sample fighters seeded")
 
     if await db.events.count_documents({}) == 0:
         sample_events = [
-            {"title": "FURY FC 12: REDEMPTION", "date": "2026-03-15", "venue": "Madison Square Garden", "city": "New York", "status": "confirmed", "description": "The biggest fight card of the year", "budget": 250000, "ticket_price": 85, "capacity": 5000, "created_at": datetime.now(timezone.utc).isoformat()},
-            {"title": "BATTLEGROUND 8: RISE", "date": "2026-04-22", "venue": "T-Mobile Arena", "city": "Las Vegas", "status": "planning", "description": "Rising stars clash", "budget": 180000, "ticket_price": 65, "capacity": 3500, "created_at": datetime.now(timezone.utc).isoformat()},
-            {"title": "IRON CAGE CHAMPIONSHIP", "date": "2026-06-10", "venue": "O2 Arena", "city": "London", "status": "announced", "description": "International championship bout", "budget": 320000, "ticket_price": 120, "capacity": 8000, "created_at": datetime.now(timezone.utc).isoformat()},
+            {"title": "FURY FC 12: REDEMPTION", "date": "2026-03-15", "venue": "Madison Square Garden", "city": "New York", "status": "confirmed", "description": "The biggest fight card of the year", "budget": 250000, "ticket_price": 85.0, "capacity": 5000, "created_at": datetime.now(timezone.utc).isoformat()},
+            {"title": "BATTLEGROUND 8: RISE", "date": "2026-04-22", "venue": "T-Mobile Arena", "city": "Las Vegas", "status": "planning", "description": "Rising stars clash", "budget": 180000, "ticket_price": 65.0, "capacity": 3500, "created_at": datetime.now(timezone.utc).isoformat()},
+            {"title": "IRON CAGE CHAMPIONSHIP", "date": "2026-06-10", "venue": "O2 Arena", "city": "London", "status": "announced", "description": "International championship bout", "budget": 320000, "ticket_price": 120.0, "capacity": 8000, "created_at": datetime.now(timezone.utc).isoformat()},
         ]
         await db.events.insert_many(sample_events)
-        logger.info("Sample events seeded")
 
-    # Create indexes
+    if await db.checklist_templates.count_documents({}) == 0:
+        templates = [
+            {"name": "Event Day Checklist", "type": "event_day", "items": [
+                {"title": "Confirm venue access and setup time", "priority": "high"},
+                {"title": "Verify fighter weigh-in results", "priority": "high"},
+                {"title": "Check medical staff on-site", "priority": "high"},
+                {"title": "Test audio/visual equipment", "priority": "medium"},
+                {"title": "Confirm security team briefing", "priority": "high"},
+                {"title": "Set up ticket scanning stations", "priority": "medium"},
+                {"title": "Brief ring officials and judges", "priority": "high"},
+                {"title": "Confirm fighter payout envelopes", "priority": "high"},
+            ], "created_at": datetime.now(timezone.utc).isoformat()},
+            {"name": "Weekly Planning Checklist", "type": "weekly", "items": [
+                {"title": "Review matchmaking progress", "priority": "high"},
+                {"title": "Follow up with sponsors", "priority": "medium"},
+                {"title": "Update social media content calendar", "priority": "medium"},
+                {"title": "Check ticket sales velocity", "priority": "high"},
+                {"title": "Review fighter contract status", "priority": "medium"},
+                {"title": "Budget review and reconciliation", "priority": "high"},
+            ], "created_at": datetime.now(timezone.utc).isoformat()},
+            {"name": "Monthly Operations Checklist", "type": "monthly", "items": [
+                {"title": "Review and renew promoter licenses", "priority": "high"},
+                {"title": "Insurance bond renewal check", "priority": "high"},
+                {"title": "Tax filing preparation (5% state fees)", "priority": "high"},
+                {"title": "Venue availability calendar update", "priority": "medium"},
+                {"title": "Fighter medical clearance review", "priority": "high"},
+                {"title": "Revenue forecast update", "priority": "medium"},
+                {"title": "Sponsor deliverables audit", "priority": "medium"},
+            ], "created_at": datetime.now(timezone.utc).isoformat()},
+            {"name": "Daily Operations Checklist", "type": "daily", "items": [
+                {"title": "Check fighter check-in status", "priority": "high"},
+                {"title": "Monitor ticket sales dashboard", "priority": "medium"},
+                {"title": "Review incoming sponsor inquiries", "priority": "low"},
+                {"title": "Update social media engagement", "priority": "low"},
+            ], "created_at": datetime.now(timezone.utc).isoformat()},
+        ]
+        await db.checklist_templates.insert_many(templates)
+
     await db.users.create_index("email", unique=True)
     await db.login_attempts.create_index("identifier")
 
-    # Write test credentials
     cred_path = Path("/app/memory/test_credentials.md")
     cred_path.parent.mkdir(parents=True, exist_ok=True)
     cred_path.write_text(f"""# Test Credentials

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   CalendarBlank, UsersFour, Trophy, ListChecks,
-  CurrencyDollar, TrendUp, ArrowRight
+  CurrencyDollar, TrendUp, ArrowRight, Handshake, Ticket
 } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 
@@ -15,15 +15,17 @@ export default function DashboardPage() {
     api.get('/dashboard/stats').then(r => setStats(r.data)).catch(console.error);
   }, [api]);
 
-  if (!stats) return <PageLoader />;
+  if (!stats) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 bg-[#DC2626] animate-pulse" /></div>;
 
   const statCards = [
-    { label: 'Total Events', value: stats.total_events, icon: CalendarBlank, color: '#DC2626' },
-    { label: 'Active Fighters', value: stats.total_fighters, icon: UsersFour, color: '#09090B' },
-    { label: 'Upcoming Events', value: stats.upcoming_events, icon: Trophy, color: '#D4AF37' },
-    { label: 'Pending Tasks', value: stats.tasks_pending, icon: ListChecks, color: '#DC2626' },
-    { label: 'Total Revenue', value: `$${(stats.total_revenue || 0).toLocaleString()}`, icon: CurrencyDollar, color: '#16A34A' },
-    { label: 'Net Profit', value: `$${(stats.net_profit || 0).toLocaleString()}`, icon: TrendUp, color: stats.net_profit >= 0 ? '#16A34A' : '#DC2626' },
+    { label: 'Total Events', value: stats.total_events, icon: CalendarBlank, color: '#DC2626', link: '/events' },
+    { label: 'Active Fighters', value: stats.total_fighters, icon: UsersFour, color: '#09090B', link: '/fighters' },
+    { label: 'Upcoming Events', value: stats.upcoming_events, icon: Trophy, color: '#D4AF37', link: '/events' },
+    { label: 'Pending Tasks', value: stats.tasks_pending, icon: ListChecks, color: '#DC2626', link: '/tasks' },
+    { label: 'Sponsors', value: stats.sponsors_count || 0, icon: Handshake, color: '#D4AF37', link: '/sponsors' },
+    { label: 'Tickets Sold', value: stats.tickets_sold || 0, icon: Ticket, color: '#3B82F6', link: '/tickets' },
+    { label: 'Total Revenue', value: `$${(stats.total_revenue || 0).toLocaleString()}`, icon: CurrencyDollar, color: '#16A34A', link: '/finance' },
+    { label: 'Net Profit', value: `$${(stats.net_profit || 0).toLocaleString()}`, icon: TrendUp, color: stats.net_profit >= 0 ? '#16A34A' : '#DC2626', link: '/finance' },
   ];
 
   return (
@@ -33,10 +35,9 @@ export default function DashboardPage() {
         <p className="text-zinc-500 mt-1">Welcome back, {user?.name || 'Promoter'}</p>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
         {statCards.map((card, i) => (
-          <div key={i} data-testid={`stat-${card.label.toLowerCase().replace(/\s/g, '-')}`} className="card-brutal p-5" style={{ animationDelay: `${i * 50}ms` }}>
+          <div key={i} data-testid={`stat-${card.label.toLowerCase().replace(/\s/g, '-')}`} onClick={() => navigate(card.link)} className="card-brutal p-5 cursor-pointer" style={{ animationDelay: `${i * 50}ms` }}>
             <div className="flex items-start justify-between">
               <div>
                 <p className="font-mono text-xs uppercase tracking-widest text-zinc-500 mb-2">{card.label}</p>
@@ -48,6 +49,22 @@ export default function DashboardPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+        <button data-testid="quick-live" onClick={() => navigate('/live')} className="accent-panel hover:-translate-y-1 transition-transform cursor-pointer text-left">
+          <p className="font-heading text-xl uppercase">Fight Night Live</p>
+          <p className="text-zinc-400 text-sm mt-1">Open real-time event command center</p>
+        </button>
+        <button data-testid="quick-checklists" onClick={() => navigate('/checklists')} className="bg-[#D4AF37] text-zinc-950 p-6 border-2 border-zinc-950 shadow-[4px_4px_0px_0px_rgba(9,9,11,1)] hover:-translate-y-1 transition-transform cursor-pointer text-left">
+          <p className="font-heading text-xl uppercase">Checklists</p>
+          <p className="text-sm mt-1 opacity-80">Apply pre-built operational checklists</p>
+        </button>
+        <button data-testid="quick-ai" onClick={() => navigate('/ai-tools')} className="bg-white border-2 border-zinc-950 shadow-[4px_4px_0px_0px_rgba(9,9,11,1)] p-6 hover:-translate-y-1 transition-transform cursor-pointer text-left">
+          <p className="font-heading text-xl uppercase">AI Tools</p>
+          <p className="text-sm text-zinc-500 mt-1">Promo generator, matchups & smart reminders</p>
+        </button>
       </div>
 
       {/* Recent Events */}
@@ -80,14 +97,6 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function PageLoader() {
-  return (
-    <div className="flex items-center justify-center h-64">
-      <div className="w-8 h-8 bg-[#DC2626] animate-pulse" />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Sparkle, Lightning, SpinnerGap } from '@phosphor-icons/react';
+import { Sparkle, Lightning, SpinnerGap, Bell } from '@phosphor-icons/react';
 
 export default function AIToolsPage() {
   const { api } = useAuth();
@@ -11,46 +11,45 @@ export default function AIToolsPage() {
   const [matchupWC, setMatchupWC] = useState('Welterweight');
   const [matchupResult, setMatchupResult] = useState('');
   const [matchupLoading, setMatchupLoading] = useState(false);
+  const [reminderEventId, setReminderEventId] = useState('');
+  const [reminderResult, setReminderResult] = useState('');
+  const [reminderLoading, setReminderLoading] = useState(false);
 
   const WEIGHT_CLASSES = ['Strawweight', 'Flyweight', 'Bantamweight', 'Featherweight', 'Lightweight', 'Welterweight', 'Middleweight', 'Light Heavyweight', 'Heavyweight'];
 
-  useEffect(() => {
-    api.get('/events').then(r => setEvents(r.data));
-  }, [api]);
+  useEffect(() => { api.get('/events').then(r => setEvents(r.data)); }, [api]);
 
   const selectEvent = (id) => {
     const ev = events.find(e => e._id === id);
-    if (ev) {
-      setPromoForm({ ...promoForm, event_title: ev.title, event_date: ev.date, venue: `${ev.venue}${ev.city ? ', ' + ev.city : ''}` });
-    }
+    if (ev) setPromoForm({ ...promoForm, event_title: ev.title, event_date: ev.date, venue: `${ev.venue}${ev.city ? ', ' + ev.city : ''}` });
   };
 
   const generatePromo = async () => {
-    setPromoLoading(true);
-    setPromoResult('');
+    setPromoLoading(true); setPromoResult('');
     try {
       const { data } = await api.post('/ai/generate-promo', promoForm);
       setPromoResult(data.promo_text);
-    } catch (e) {
-      setPromoResult('Failed to generate promotional text. Please try again.');
-    }
+    } catch { setPromoResult('Failed to generate. Please try again.'); }
     setPromoLoading(false);
   };
 
   const generateMatchups = async () => {
-    setMatchupLoading(true);
-    setMatchupResult('');
+    setMatchupLoading(true); setMatchupResult('');
     try {
       const { data } = await api.post('/ai/matchup-suggestions', { weight_class: matchupWC });
-      if (data.message) {
-        setMatchupResult(data.message);
-      } else {
-        setMatchupResult(typeof data.suggestions === 'string' ? data.suggestions : JSON.stringify(data.suggestions, null, 2));
-      }
-    } catch (e) {
-      setMatchupResult('Failed to generate matchup suggestions. Please try again.');
-    }
+      setMatchupResult(data.message || (typeof data.suggestions === 'string' ? data.suggestions : JSON.stringify(data.suggestions, null, 2)));
+    } catch { setMatchupResult('Failed to generate. Please try again.'); }
     setMatchupLoading(false);
+  };
+
+  const generateReminders = async () => {
+    if (!reminderEventId) return;
+    setReminderLoading(true); setReminderResult('');
+    try {
+      const { data } = await api.post('/ai/smart-reminders', { event_id: reminderEventId });
+      setReminderResult(data.reminders);
+    } catch { setReminderResult('Failed to generate. Please try again.'); }
+    setReminderLoading(false);
   };
 
   const set = (k) => (e) => setPromoForm({ ...promoForm, [k]: e.target.value });
@@ -72,8 +71,7 @@ export default function AIToolsPage() {
         <div className="card-brutal overflow-hidden">
           <div className="bg-zinc-950 p-4 border-l-4 border-l-[#D4AF37]">
             <h2 className="font-heading text-2xl uppercase text-white flex items-center gap-2">
-              <Lightning weight="fill" className="text-[#D4AF37]" size={20} />
-              Promo Generator
+              <Lightning weight="fill" className="text-[#D4AF37]" size={20} /> Promo Generator
             </h2>
             <p className="text-zinc-400 text-sm">Auto-generate hype promotional descriptions</p>
           </div>
@@ -88,20 +86,20 @@ export default function AIToolsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="font-mono text-xs uppercase tracking-widest text-zinc-500 mb-1 block">Event Title</label>
-                <input data-testid="ai-promo-title" value={promoForm.event_title} onChange={set('event_title')} className="input-brutal" placeholder="FURY FC 12" />
+                <input data-testid="ai-promo-title" value={promoForm.event_title} onChange={set('event_title')} className="input-brutal" />
               </div>
               <div>
                 <label className="font-mono text-xs uppercase tracking-widest text-zinc-500 mb-1 block">Date</label>
-                <input data-testid="ai-promo-date" value={promoForm.event_date} onChange={set('event_date')} className="input-brutal" placeholder="2026-03-15" />
+                <input data-testid="ai-promo-date" value={promoForm.event_date} onChange={set('event_date')} className="input-brutal" />
               </div>
             </div>
             <div>
               <label className="font-mono text-xs uppercase tracking-widest text-zinc-500 mb-1 block">Venue</label>
-              <input data-testid="ai-promo-venue" value={promoForm.venue} onChange={set('venue')} className="input-brutal" placeholder="Madison Square Garden, New York" />
+              <input data-testid="ai-promo-venue" value={promoForm.venue} onChange={set('venue')} className="input-brutal" />
             </div>
             <div>
               <label className="font-mono text-xs uppercase tracking-widest text-zinc-500 mb-1 block">Main Event (optional)</label>
-              <input data-testid="ai-promo-main" value={promoForm.main_event} onChange={set('main_event')} className="input-brutal" placeholder="Johnson vs Ramirez for the Welterweight Title" />
+              <input data-testid="ai-promo-main" value={promoForm.main_event} onChange={set('main_event')} className="input-brutal" />
             </div>
             <div>
               <label className="font-mono text-xs uppercase tracking-widest text-zinc-500 mb-1 block">Style</label>
@@ -128,8 +126,7 @@ export default function AIToolsPage() {
         <div className="card-brutal overflow-hidden">
           <div className="bg-zinc-950 p-4 border-l-4 border-l-[#D4AF37]">
             <h2 className="font-heading text-2xl uppercase text-white flex items-center gap-2">
-              <Sparkle weight="fill" className="text-[#D4AF37]" size={20} />
-              Matchup Suggestions
+              <Sparkle weight="fill" className="text-[#D4AF37]" size={20} /> Matchup Suggestions
             </h2>
             <p className="text-zinc-400 text-sm">AI-powered fight matchup recommendations</p>
           </div>
@@ -147,6 +144,36 @@ export default function AIToolsPage() {
               <div data-testid="matchup-result" className="ai-highlight mt-4">
                 <p className="font-mono text-xs uppercase tracking-widest text-[#D4AF37] mb-2">AI Suggestions</p>
                 <pre className="whitespace-pre-wrap text-sm leading-relaxed font-body">{matchupResult}</pre>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Smart Reminders */}
+        <div className="card-brutal overflow-hidden lg:col-span-2">
+          <div className="bg-zinc-950 p-4 border-l-4 border-l-[#DC2626]">
+            <h2 className="font-heading text-2xl uppercase text-white flex items-center gap-2">
+              <Bell weight="fill" className="text-[#DC2626]" size={20} /> Smart Reminders & Alerts
+            </h2>
+            <p className="text-zinc-400 text-sm">AI scans your event data to flag risks, missing tasks, and compliance issues</p>
+          </div>
+          <div className="p-6">
+            <div className="flex gap-4 items-end mb-4">
+              <div className="flex-1">
+                <label className="font-mono text-xs uppercase tracking-widest text-zinc-500 mb-1 block">Select Event</label>
+                <select data-testid="ai-reminder-event" value={reminderEventId} onChange={e => setReminderEventId(e.target.value)} className="select-brutal">
+                  <option value="">-- Choose event --</option>
+                  {events.map(ev => <option key={ev._id} value={ev._id}>{ev.title}</option>)}
+                </select>
+              </div>
+              <button data-testid="generate-reminders-btn" onClick={generateReminders} disabled={reminderLoading || !reminderEventId} className="btn-accent flex items-center gap-2 disabled:opacity-50">
+                {reminderLoading ? <><SpinnerGap size={20} className="animate-spin" /> Scanning...</> : <><Bell weight="fill" size={20} /> Scan Event</>}
+              </button>
+            </div>
+            {reminderResult && (
+              <div data-testid="reminder-result" className="bg-red-50 border-2 border-[#DC2626] p-6">
+                <p className="font-mono text-xs uppercase tracking-widest text-[#DC2626] mb-3">AI Risk Analysis & Reminders</p>
+                <pre className="whitespace-pre-wrap text-sm leading-relaxed font-body">{reminderResult}</pre>
               </div>
             )}
           </div>
