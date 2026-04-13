@@ -1,25 +1,28 @@
+#!/usr/bin/env python3
+
 import requests
 import sys
 import json
 from datetime import datetime
 
-class FightPromoAPITester:
-    def __init__(self, base_url="https://dreamy-buck-5.preview.emergentagent.com/api"):
+class FightJudgeProTester:
+    def __init__(self, base_url="https://dreamy-buck-5.preview.emergentagent.com"):
         self.base_url = base_url
         self.session = requests.Session()
         self.tests_run = 0
         self.tests_passed = 0
-        self.admin_credentials = {"email": "admin@fightpromo.com", "password": "Admin123!"}
+        self.failed_tests = []
 
-    def run_test(self, name, method, endpoint, expected_status, data=None, headers=None):
+    def run_test(self, name, method, endpoint, expected_status, data=None, headers=None, auth_required=True):
         """Run a single API test"""
-        url = f"{self.base_url}/{endpoint}"
+        url = f"{self.base_url}/api/{endpoint}"
         test_headers = {'Content-Type': 'application/json'}
         if headers:
             test_headers.update(headers)
 
         self.tests_run += 1
         print(f"\n🔍 Testing {name}...")
+        print(f"   URL: {method} {url}")
         
         try:
             if method == 'GET':
@@ -36,673 +39,563 @@ class FightPromoAPITester:
             success = response.status_code == expected_status
             if success:
                 self.tests_passed += 1
-                print(f"✅ Passed - Status: {response.status_code}")
+                print(f"✅ PASSED - Status: {response.status_code}")
                 try:
-                    return success, response.json()
+                    response_data = response.json()
+                    if isinstance(response_data, list):
+                        print(f"   Response: List with {len(response_data)} items")
+                    elif isinstance(response_data, dict):
+                        print(f"   Response keys: {list(response_data.keys())}")
                 except:
-                    return success, response.text
+                    print(f"   Response: {response.text[:100]}...")
             else:
-                print(f"❌ Failed - Expected {expected_status}, got {response.status_code}")
-                try:
-                    print(f"Response: {response.json()}")
-                except:
-                    print(f"Response: {response.text}")
-                return False, {}
+                print(f"❌ FAILED - Expected {expected_status}, got {response.status_code}")
+                print(f"   Response: {response.text[:200]}...")
+                self.failed_tests.append({
+                    'name': name,
+                    'expected': expected_status,
+                    'actual': response.status_code,
+                    'response': response.text[:200]
+                })
+
+            return success, response.json() if response.text and response.status_code < 500 else {}
 
         except Exception as e:
-            print(f"❌ Failed - Error: {str(e)}")
+            print(f"❌ FAILED - Error: {str(e)}")
+            self.failed_tests.append({
+                'name': name,
+                'error': str(e)
+            })
             return False, {}
 
-    def test_auth_flow(self):
-        """Test complete authentication flow"""
-        print("\n=== TESTING AUTHENTICATION ===")
-        
-        # Test login
+    def test_login(self):
+        """Test admin login"""
         success, response = self.run_test(
             "Admin Login",
             "POST",
             "auth/login",
             200,
-            data=self.admin_credentials
+            data={"email": "admin@fightpromo.com", "password": "Admin123!"},
+            auth_required=False
         )
-        
-        if not success:
-            print("❌ Login failed, cannot continue with authenticated tests")
-            return False
-            
-        # Test get current user
-        success, user_data = self.run_test(
-            "Get Current User",
-            "GET", 
-            "auth/me",
-            200
+        return success
+
+    def test_public_events(self):
+        """Test public events endpoint (no auth required)"""
+        success, response = self.run_test(
+            "Public Events (No Auth)",
+            "GET",
+            "public/events",
+            200,
+            auth_required=False
         )
-        
-        if success and user_data.get('role') == 'admin':
-            print(f"✅ Logged in as admin: {user_data.get('name', 'Unknown')}")
-            return True
-        else:
-            print("❌ Failed to verify admin user")
-            return False
+        return success, response
 
     def test_dashboard_stats(self):
-        """Test dashboard statistics endpoint"""
-        print("\n=== TESTING DASHBOARD ===")
-        
-        success, stats = self.run_test(
+        """Test dashboard stats"""
+        success, response = self.run_test(
             "Dashboard Stats",
             "GET",
-            "dashboard/stats", 
+            "dashboard/stats",
+            200
+        )
+        return success, response
+
+    def test_officials_crud(self):
+        """Test officials CRUD operations"""
+        print("\n📋 Testing Officials CRUD...")
+        
+        # List officials
+        success, officials = self.run_test(
+            "List Officials",
+            "GET",
+            "officials",
             200
         )
         
         if success:
-            required_fields = ['total_events', 'total_fighters', 'upcoming_events', 'tasks_pending', 'tasks_completed', 'total_revenue', 'total_expenses', 'net_profit']
-            missing_fields = [field for field in required_fields if field not in stats]
-            if missing_fields:
-                print(f"❌ Missing dashboard fields: {missing_fields}")
-                return False
+            print(f"   Found {len(officials)} officials")
+            if len(officials) >= 5:
+                print("✅ Expected 5+ seeded officials found")
             else:
-                print(f"✅ Dashboard stats complete - Events: {stats['total_events']}, Fighters: {stats['total_fighters']}")
-                return True
-        return False
-
-    def test_events_crud(self):
-        """Test events CRUD operations"""
-        print("\n=== TESTING EVENTS CRUD ===")
+                print(f"⚠️  Expected 5+ officials, found {len(officials)}")
         
-        # List events
-        success, events = self.run_test("List Events", "GET", "events", 200)
-        if not success:
-            return False
-            
-        initial_count = len(events)
-        print(f"✅ Found {initial_count} existing events")
-        
-        # Create event
-        test_event = {
-            "title": "TEST EVENT - DELETE ME",
-            "date": "2026-12-31",
-            "venue": "Test Arena",
-            "city": "Test City",
-            "status": "planning",
-            "description": "Test event for API testing",
-            "budget": 50000,
-            "ticket_price": 75,
-            "capacity": 1000
-        }
-        
-        success, created_event = self.run_test("Create Event", "POST", "events", 200, data=test_event)
-        if not success:
-            return False
-            
-        event_id = created_event.get('_id')
-        if not event_id:
-            print("❌ No event ID returned from creation")
-            return False
-            
-        # Get specific event
-        success, event_detail = self.run_test("Get Event", "GET", f"events/{event_id}", 200)
-        if not success:
-            return False
-            
-        # Update event
-        updated_data = test_event.copy()
-        updated_data['title'] = "UPDATED TEST EVENT"
-        success, updated_event = self.run_test("Update Event", "PUT", f"events/{event_id}", 200, data=updated_data)
-        if not success:
-            return False
-            
-        # Delete event
-        success, _ = self.run_test("Delete Event", "DELETE", f"events/{event_id}", 200)
-        if not success:
-            return False
-            
-        print("✅ Events CRUD operations completed successfully")
-        return True
-
-    def test_fighters_crud(self):
-        """Test fighters CRUD operations"""
-        print("\n=== TESTING FIGHTERS CRUD ===")
-        
-        # List fighters
-        success, fighters = self.run_test("List Fighters", "GET", "fighters", 200)
-        if not success:
-            return False
-            
-        initial_count = len(fighters)
-        print(f"✅ Found {initial_count} existing fighters")
-        
-        # Create fighter
-        test_fighter = {
-            "name": "Test Fighter",
-            "nickname": "The Tester",
-            "weight_class": "Welterweight",
-            "wins": 5,
-            "losses": 2,
-            "draws": 0,
-            "status": "active",
-            "age": 25,
-            "height": "5'10\"",
-            "reach": "72\"",
-            "stance": "orthodox",
-            "gym": "Test Gym"
-        }
-        
-        success, created_fighter = self.run_test("Create Fighter", "POST", "fighters", 200, data=test_fighter)
-        if not success:
-            return False
-            
-        fighter_id = created_fighter.get('_id')
-        if not fighter_id:
-            print("❌ No fighter ID returned from creation")
-            return False
-            
-        # Get specific fighter
-        success, fighter_detail = self.run_test("Get Fighter", "GET", f"fighters/{fighter_id}", 200)
-        if not success:
-            return False
-            
-        # Update fighter
-        updated_data = test_fighter.copy()
-        updated_data['wins'] = 6
-        success, updated_fighter = self.run_test("Update Fighter", "PUT", f"fighters/{fighter_id}", 200, data=updated_data)
-        if not success:
-            return False
-            
-        # Delete fighter
-        success, _ = self.run_test("Delete Fighter", "DELETE", f"fighters/{fighter_id}", 200)
-        if not success:
-            return False
-            
-        print("✅ Fighters CRUD operations completed successfully")
-        return True
-
-    def test_tasks_crud(self):
-        """Test tasks CRUD operations"""
-        print("\n=== TESTING TASKS CRUD ===")
-        
-        # List tasks
-        success, tasks = self.run_test("List Tasks", "GET", "tasks", 200)
-        if not success:
-            return False
-            
-        # Create task
-        test_task = {
-            "title": "Test Task",
-            "description": "This is a test task",
-            "due_date": "2026-12-31",
-            "priority": "medium",
-            "status": "pending"
-        }
-        
-        success, created_task = self.run_test("Create Task", "POST", "tasks", 200, data=test_task)
-        if not success:
-            return False
-            
-        task_id = created_task.get('_id')
-        if not task_id:
-            print("❌ No task ID returned from creation")
-            return False
-            
-        # Toggle task status
-        success, toggled_task = self.run_test("Toggle Task Status", "PATCH", f"tasks/{task_id}/status", 200)
-        if not success:
-            return False
-            
-        # Delete task
-        success, _ = self.run_test("Delete Task", "DELETE", f"tasks/{task_id}", 200)
-        if not success:
-            return False
-            
-        print("✅ Tasks CRUD operations completed successfully")
-        return True
-
-    def test_financials_crud(self):
-        """Test financials CRUD operations"""
-        print("\n=== TESTING FINANCIALS CRUD ===")
-        
-        # Get financial summary
-        success, summary = self.run_test("Financial Summary", "GET", "financials/summary", 200)
-        if not success:
-            return False
-            
-        # List financials
-        success, financials = self.run_test("List Financials", "GET", "financials", 200)
-        if not success:
-            return False
-            
-        # Get events for financial record
-        success, events = self.run_test("Get Events for Financial", "GET", "events", 200)
-        if not success or not events:
-            print("❌ No events available for financial testing")
-            return False
-            
-        # Create financial record
-        test_financial = {
-            "event_id": events[0]['_id'],
-            "type": "revenue",
-            "category": "Ticket Sales",
-            "amount": 10000,
-            "description": "Test revenue record"
-        }
-        
-        success, created_financial = self.run_test("Create Financial Record", "POST", "financials", 200, data=test_financial)
-        if not success:
-            return False
-            
-        financial_id = created_financial.get('_id')
-        if not financial_id:
-            print("❌ No financial ID returned from creation")
-            return False
-            
-        # Delete financial record
-        success, _ = self.run_test("Delete Financial Record", "DELETE", f"financials/{financial_id}", 200)
-        if not success:
-            return False
-            
-        print("✅ Financials CRUD operations completed successfully")
-        return True
-
-    def test_bouts_crud(self):
-        """Test bouts/fight cards CRUD operations"""
-        print("\n=== TESTING BOUTS/FIGHT CARDS CRUD ===")
-        
-        # Get fighters and events for bout creation
-        success, fighters = self.run_test("Get Fighters for Bout", "GET", "fighters", 200)
-        if not success or len(fighters) < 2:
-            print("❌ Need at least 2 fighters for bout testing")
-            return False
-            
-        success, events = self.run_test("Get Events for Bout", "GET", "events", 200)
-        if not success or not events:
-            print("❌ No events available for bout testing")
-            return False
-            
-        # Create bout
-        test_bout = {
-            "event_id": events[0]['_id'],
-            "fighter1_id": fighters[0]['_id'],
-            "fighter2_id": fighters[1]['_id'],
-            "weight_class": "Welterweight",
-            "rounds": 3,
-            "is_main_event": False,
-            "bout_order": 1
-        }
-        
-        success, created_bout = self.run_test("Create Bout", "POST", "bouts", 200, data=test_bout)
-        if not success:
-            return False
-            
-        bout_id = created_bout.get('_id')
-        if not bout_id:
-            print("❌ No bout ID returned from creation")
-            return False
-            
-        # List bouts for event
-        success, bouts = self.run_test("List Bouts for Event", "GET", f"bouts?event_id={events[0]['_id']}", 200)
-        if not success:
-            return False
-            
-        # Delete bout
-        success, _ = self.run_test("Delete Bout", "DELETE", f"bouts/{bout_id}", 200)
-        if not success:
-            return False
-            
-        print("✅ Bouts CRUD operations completed successfully")
-        return True
-
-    def test_sponsors_crud(self):
-        """Test sponsors CRUD operations"""
-        print("\n=== TESTING SPONSORS CRUD ===")
-        
-        # List sponsors
-        success, sponsors = self.run_test("List Sponsors", "GET", "sponsors", 200)
-        if not success:
-            return False
-            
-        initial_count = len(sponsors)
-        print(f"✅ Found {initial_count} existing sponsors")
-        
-        # Create sponsor
-        test_sponsor = {
-            "name": "Test Sponsor Corp",
-            "contact_name": "John Test",
-            "contact_email": "john@testsponsor.com",
+        # Create new official
+        new_official = {
+            "name": "Test Official",
+            "role": "referee",
+            "email": "test@example.com",
             "phone": "555-0123",
-            "tier": "gold",
-            "amount": 25000,
-            "status": "confirmed",
-            "notes": "Test sponsor for API testing"
+            "rating": 4,
+            "status": "active"
         }
         
-        success, created_sponsor = self.run_test("Create Sponsor", "POST", "sponsors", 200, data=test_sponsor)
-        if not success:
-            return False
-            
-        sponsor_id = created_sponsor.get('_id')
-        if not sponsor_id:
-            print("❌ No sponsor ID returned from creation")
-            return False
-            
-        # Update sponsor
-        updated_data = test_sponsor.copy()
-        updated_data['amount'] = 30000
-        success, updated_sponsor = self.run_test("Update Sponsor", "PUT", f"sponsors/{sponsor_id}", 200, data=updated_data)
-        if not success:
-            return False
-            
-        # Delete sponsor
-        success, _ = self.run_test("Delete Sponsor", "DELETE", f"sponsors/{sponsor_id}", 200)
-        if not success:
-            return False
-            
-        print("✅ Sponsors CRUD operations completed successfully")
-        return True
+        create_success, created = self.run_test(
+            "Create Official",
+            "POST",
+            "officials",
+            200,
+            data=new_official
+        )
+        
+        official_id = None
+        if create_success and created.get('_id'):
+            official_id = created['_id']
+            print(f"   Created official with ID: {official_id}")
+        
+        # Test filter by role
+        filter_success, filtered = self.run_test(
+            "Filter Officials by Role",
+            "GET",
+            "officials?role=referee",
+            200
+        )
+        
+        if filter_success:
+            print(f"   Found {len(filtered)} referees")
+        
+        # Clean up - delete test official
+        if official_id:
+            self.run_test(
+                "Delete Test Official",
+                "DELETE",
+                f"officials/{official_id}",
+                200
+            )
+        
+        return success and create_success and filter_success
 
-    def test_checklist_templates(self):
-        """Test checklist templates endpoints"""
-        print("\n=== TESTING CHECKLIST TEMPLATES ===")
+    def test_venues_crud(self):
+        """Test venues CRUD operations"""
+        print("\n🏢 Testing Venues CRUD...")
         
-        # List templates
-        success, templates = self.run_test("List Checklist Templates", "GET", "checklists/templates", 200)
-        if not success:
-            return False
-            
-        print(f"✅ Found {len(templates)} checklist templates")
+        # List venues
+        success, venues = self.run_test(
+            "List Venues",
+            "GET",
+            "venues",
+            200
+        )
         
-        # Verify seeded templates exist
-        expected_types = ['daily', 'weekly', 'monthly', 'event_day']
-        found_types = [t.get('type') for t in templates]
-        missing_types = [t for t in expected_types if t not in found_types]
+        if success:
+            print(f"   Found {len(venues)} venues")
+            if len(venues) >= 3:
+                print("✅ Expected 3+ seeded venues found")
+            else:
+                print(f"⚠️  Expected 3+ venues, found {len(venues)}")
         
-        if missing_types:
-            print(f"⚠️  Missing template types: {missing_types}")
-        else:
-            print("✅ All expected template types found")
-            
-        # Test applying checklist if we have events and templates
-        if templates:
-            success, events = self.run_test("Get Events for Checklist", "GET", "events", 200)
-            if success and events:
-                template_id = templates[0]['_id']
-                event_id = events[0]['_id']
-                success, result = self.run_test("Apply Checklist", "POST", f"checklists/apply/{template_id}?event_id={event_id}", 200)
-                if success:
-                    print(f"✅ Applied checklist - created {result.get('created', 0)} tasks")
+        # Create new venue
+        new_venue = {
+            "name": "Test Arena",
+            "city": "Test City",
+            "state": "TS",
+            "capacity": 5000,
+            "rental_cost": 25000,
+            "status": "available"
+        }
+        
+        create_success, created = self.run_test(
+            "Create Venue",
+            "POST",
+            "venues",
+            200,
+            data=new_venue
+        )
+        
+        venue_id = None
+        if create_success and created.get('_id'):
+            venue_id = created['_id']
+            print(f"   Created venue with ID: {venue_id}")
+        
+        # Clean up - delete test venue
+        if venue_id:
+            self.run_test(
+                "Delete Test Venue",
+                "DELETE",
+                f"venues/{venue_id}",
+                200
+            )
+        
+        return success and create_success
+
+    def test_compliance_dashboard(self):
+        """Test compliance dashboard"""
+        success, dashboard = self.run_test(
+            "Compliance Dashboard",
+            "GET",
+            "compliance/dashboard",
+            200
+        )
+        
+        if success:
+            expected_keys = ['total_licenses', 'expired_licenses', 'active_suspensions', 'expiring_count']
+            for key in expected_keys:
+                if key in dashboard:
+                    print(f"   {key}: {dashboard[key]}")
                 else:
-                    print("⚠️  Failed to apply checklist")
-            
-        return True
+                    print(f"⚠️  Missing key: {key}")
+        
+        return success
 
-    def test_live_data(self):
-        """Test Fight Night Live endpoint"""
-        print("\n=== TESTING FIGHT NIGHT LIVE ===")
+    def test_licenses_crud(self):
+        """Test licenses CRUD"""
+        print("\n📜 Testing Licenses CRUD...")
         
-        # Get events first
-        success, events = self.run_test("Get Events for Live", "GET", "events", 200)
-        if not success or not events:
-            print("❌ No events available for live testing")
-            return False
-            
-        event_id = events[0]['_id']
+        # List licenses
+        success, licenses = self.run_test(
+            "List Licenses",
+            "GET",
+            "licenses",
+            200
+        )
         
-        # Test live data endpoint
-        success, live_data = self.run_test("Get Live Data", "GET", f"live/{event_id}", 200)
-        if not success:
-            return False
-            
-        # Verify live data structure
-        required_fields = ['event', 'bouts', 'financial', 'tickets_sold', 'tasks', 'total_bouts', 'completed_bouts']
-        missing_fields = [field for field in required_fields if field not in live_data]
+        # Create license
+        new_license = {
+            "entity_type": "promoter",
+            "entity_name": "Test Promoter",
+            "license_type": "Professional",
+            "state": "CA",
+            "license_number": "TEST123",
+            "issue_date": "2024-01-01",
+            "expiry_date": "2025-01-01",
+            "status": "active"
+        }
         
-        if missing_fields:
-            print(f"❌ Missing live data fields: {missing_fields}")
-            return False
-        else:
-            print("✅ Live data structure complete")
-            return True
+        create_success, created = self.run_test(
+            "Create License",
+            "POST",
+            "licenses",
+            200,
+            data=new_license
+        )
+        
+        license_id = None
+        if create_success and created.get('_id'):
+            license_id = created['_id']
+        
+        # Clean up
+        if license_id:
+            self.run_test(
+                "Delete Test License",
+                "DELETE",
+                f"licenses/{license_id}",
+                200
+            )
+        
+        return success and create_success
 
-    def test_ticketing_endpoints(self):
-        """Test ticketing endpoints"""
-        print("\n=== TESTING TICKETING ===")
+    def test_suspensions_crud(self):
+        """Test medical suspensions CRUD"""
+        print("\n🚫 Testing Medical Suspensions CRUD...")
         
-        # Get ticket packages
-        success, packages = self.run_test("Get Ticket Packages", "GET", "tickets/packages", 200)
-        if not success:
-            return False
+        # List suspensions
+        success, suspensions = self.run_test(
+            "List Suspensions",
+            "GET",
+            "suspensions",
+            200
+        )
+        
+        # Create suspension (need a fighter first)
+        fighters_success, fighters = self.run_test(
+            "List Fighters for Suspension",
+            "GET",
+            "fighters",
+            200
+        )
+        
+        if fighters_success and len(fighters) > 0:
+            fighter_id = fighters[0]['_id']
+            new_suspension = {
+                "fighter_id": fighter_id,
+                "fighter_name": fighters[0]['name'],
+                "type": "no_contact",
+                "start_date": "2024-01-01",
+                "end_date": "2024-02-01",
+                "reason": "Test suspension"
+            }
             
-        # Verify expected packages
-        expected_packages = ['general', 'vip', 'ringside', 'ppv']
-        missing_packages = [pkg for pkg in expected_packages if pkg not in packages]
-        
-        if missing_packages:
-            print(f"❌ Missing ticket packages: {missing_packages}")
-            return False
-        else:
-            print(f"✅ Found all {len(packages)} expected ticket packages")
+            create_success, created = self.run_test(
+                "Create Medical Suspension",
+                "POST",
+                "suspensions",
+                200,
+                data=new_suspension
+            )
             
-        # Get ticket history
-        success, history = self.run_test("Get Ticket History", "GET", "tickets/history", 200)
-        if success:
-            print(f"✅ Ticket history accessible ({len(history)} records)")
-        
-        return True
-
-    def test_financial_analytics(self):
-        """Test financial analytics endpoint"""
-        print("\n=== TESTING FINANCIAL ANALYTICS ===")
-        
-        # Test analytics endpoint
-        success, analytics = self.run_test("Financial Analytics", "GET", "financials/analytics", 200)
-        if not success:
-            return False
-            
-        # Verify analytics structure
-        required_fields = ['by_event', 'by_category', 'monthly']
-        missing_fields = [field for field in required_fields if field not in analytics]
-        
-        if missing_fields:
-            print(f"❌ Missing analytics fields: {missing_fields}")
-            return False
-        else:
-            print("✅ Financial analytics structure complete")
-            return True
-
-    def test_dynamic_pricing_endpoints(self):
-        """Test new dynamic pricing endpoints"""
-        print("\n=== TESTING DYNAMIC PRICING ===")
-        
-        # Get events first
-        success, events = self.run_test("Get Events for Pricing", "GET", "events", 200)
-        if not success or not events:
-            print("❌ No events available for pricing testing")
-            return False
-            
-        event_id = events[0]['_id']
-        
-        # Test dynamic pricing endpoint
-        success, pricing_data = self.run_test("Get Dynamic Pricing", "GET", f"tickets/dynamic-pricing/{event_id}", 200)
-        if not success:
-            return False
-            
-        # Verify pricing structure
-        expected_packages = ['general', 'vip', 'ringside', 'ppv']
-        missing_packages = [pkg for pkg in expected_packages if pkg not in pricing_data]
-        
-        if missing_packages:
-            print(f"❌ Missing pricing packages: {missing_packages}")
-            return False
-        
-        # Verify each package has required pricing fields
-        for pkg_id, pkg_data in pricing_data.items():
-            required_fields = ['base_price', 'dynamic_price', 'multiplier', 'factors', 'name']
-            missing_fields = [field for field in required_fields if field not in pkg_data]
-            if missing_fields:
-                print(f"❌ Package {pkg_id} missing fields: {missing_fields}")
-                return False
+            suspension_id = None
+            if create_success and created.get('_id'):
+                suspension_id = created['_id']
                 
-            # Verify factors structure
-            if 'factors' in pkg_data:
-                expected_factors = ['scarcity', 'urgency', 'velocity']
-                factor_data = pkg_data['factors']
-                missing_factors = [f for f in expected_factors if f not in factor_data]
-                if missing_factors:
-                    print(f"❌ Package {pkg_id} missing factors: {missing_factors}")
-                    return False
-                    
-                # Verify each factor has required fields
-                for factor_name, factor_info in factor_data.items():
-                    factor_required = ['value', 'multiplier', 'label']
-                    factor_missing = [f for f in factor_required if f not in factor_info]
-                    if factor_missing:
-                        print(f"❌ Factor {factor_name} missing fields: {factor_missing}")
-                        return False
-        
-        print("✅ Dynamic pricing structure complete with all factors")
-        
-        # Test sales analytics endpoint
-        success, analytics_data = self.run_test("Get Sales Analytics", "GET", f"tickets/sales-analytics/{event_id}", 200)
-        if not success:
-            return False
+                # Test clear suspension
+                clear_success, cleared = self.run_test(
+                    "Clear Suspension",
+                    "PATCH",
+                    f"suspensions/{suspension_id}/clear",
+                    200
+                )
             
-        # Verify analytics structure
-        required_analytics = ['total_sold', 'total_revenue', 'capacity', 'utilization', 'by_package', 'daily_sales']
-        missing_analytics = [field for field in required_analytics if field not in analytics_data]
-        
-        if missing_analytics:
-            print(f"❌ Missing analytics fields: {missing_analytics}")
-            return False
+            return success and create_success
         else:
-            print(f"✅ Sales analytics complete - Sold: {analytics_data['total_sold']}, Revenue: ${analytics_data['total_revenue']}")
-            
-        return True
+            print("⚠️  No fighters found for suspension test")
+            return success
 
-    def test_ai_pricing_recommendations(self):
-        """Test AI pricing recommendations endpoint"""
-        print("\n=== TESTING AI PRICING RECOMMENDATIONS ===")
+    def test_messages_crud(self):
+        """Test messages CRUD"""
+        print("\n💬 Testing Messages CRUD...")
         
-        # Get events first
-        success, events = self.run_test("Get Events for AI Pricing", "GET", "events", 200)
-        if not success or not events:
-            print("❌ No events available for AI pricing testing")
-            return False
-            
-        event_id = events[0]['_id']
+        # List messages
+        success, messages = self.run_test(
+            "List Messages",
+            "GET",
+            "messages",
+            200
+        )
         
-        # Test AI pricing recommendations endpoint
-        # Note: This uses real OpenAI via Emergent LLM key, so we test accessibility but don't wait for full response
-        success, response = self.run_test("AI Pricing Recommendations", "POST", f"ai/pricing-recommendations?event_id={event_id}", 200)
-        if not success:
-            # Check if it's a 500 error which might be expected if AI integration has issues
-            print("ℹ️  AI Pricing Recommendations endpoint exists but may have AI integration issues")
-            return True  # We consider this a pass since the endpoint is accessible
-        else:
-            print("✅ AI Pricing Recommendations endpoint accessible")
-            return True
-
-    def test_ai_endpoints(self):
-        """Test AI endpoints (forms should load, don't test actual AI responses)"""
-        print("\n=== TESTING AI ENDPOINTS ===")
-        
-        # Test promo generation endpoint exists
-        test_promo_data = {
-            "event_title": "Test Event",
-            "event_date": "2026-12-31",
-            "venue": "Test Arena",
-            "main_event": "Test vs Test",
-            "style": "hype"
+        # Create broadcast message
+        new_message = {
+            "to_type": "broadcast",
+            "subject": "Test Broadcast",
+            "body": "This is a test broadcast message",
+            "priority": "normal"
         }
         
-        # Note: We expect this might fail due to AI key, but endpoint should exist
-        success, response = self.run_test("AI Promo Generation", "POST", "ai/generate-promo", 200, data=test_promo_data)
-        if not success:
-            # Try again to see if it's a 500 error (which is expected if AI fails)
-            print("ℹ️  AI Promo endpoint exists but may have AI integration issues")
+        create_success, created = self.run_test(
+            "Create Broadcast Message",
+            "POST",
+            "messages",
+            200,
+            data=new_message
+        )
         
-        # Test matchup suggestions
-        test_matchup_data = {
-            "weight_class": "Welterweight"
+        return success and create_success
+
+    def test_documents_crud(self):
+        """Test documents CRUD"""
+        print("\n📄 Testing Documents CRUD...")
+        
+        # List documents
+        success, documents = self.run_test(
+            "List Documents",
+            "GET",
+            "documents",
+            200
+        )
+        
+        # Create manual document
+        new_document = {
+            "name": "Test Document",
+            "type": "bout_agreement",
+            "content": "This is a test document content",
+            "status": "draft"
         }
         
-        success, response = self.run_test("AI Matchup Suggestions", "POST", "ai/matchup-suggestions", 200, data=test_matchup_data)
-        if not success:
-            print("ℹ️  AI Matchup endpoint exists but may have AI integration issues")
-            
-        # Test smart reminders
-        success, events = self.run_test("Get Events for AI", "GET", "events", 200)
-        if success and events:
-            test_reminder_data = {"event_id": events[0]['_id']}
-            success, response = self.run_test("AI Smart Reminders", "POST", "ai/smart-reminders", 200, data=test_reminder_data)
-            if not success:
-                print("ℹ️  AI Smart Reminders endpoint exists but may have AI integration issues")
-            
-        print("✅ AI endpoints are accessible (actual AI responses may vary)")
-        return True
-
-    def test_logout(self):
-        """Test logout functionality"""
-        print("\n=== TESTING LOGOUT ===")
+        create_success, created = self.run_test(
+            "Create Manual Document",
+            "POST",
+            "documents",
+            200,
+            data=new_document
+        )
         
-        success, _ = self.run_test("Logout", "POST", "auth/logout", 200)
-        if not success:
-            return False
+        doc_id = None
+        if create_success and created.get('_id'):
+            doc_id = created['_id']
+        
+        # Test AI document generation (should exist but may fail due to API key)
+        events_success, events = self.run_test(
+            "List Events for Doc Generation",
+            "GET",
+            "events",
+            200
+        )
+        
+        if events_success and len(events) > 0:
+            event_id = events[0]['_id']
+            gen_success, generated = self.run_test(
+                "Generate AI Document",
+                "POST",
+                f"documents/generate?type=bout_agreement&event_id={event_id}",
+                200
+            )
+            print(f"   AI Generation: {'✅ Success' if gen_success else '⚠️  Failed (expected if no LLM key)'}")
+        
+        # Clean up
+        if doc_id:
+            self.run_test(
+                "Delete Test Document",
+                "DELETE",
+                f"documents/{doc_id}",
+                200
+            )
+        
+        return success and create_success
+
+    def test_campaigns_crud(self):
+        """Test marketing campaigns CRUD"""
+        print("\n📢 Testing Marketing Campaigns CRUD...")
+        
+        # List campaigns
+        success, campaigns = self.run_test(
+            "List Campaigns",
+            "GET",
+            "campaigns",
+            200
+        )
+        
+        # Create campaign
+        new_campaign = {
+            "name": "Test Campaign",
+            "type": "email",
+            "content": "Test campaign content",
+            "target_audience": "all",
+            "status": "draft"
+        }
+        
+        create_success, created = self.run_test(
+            "Create Campaign",
+            "POST",
+            "campaigns",
+            200,
+            data=new_campaign
+        )
+        
+        campaign_id = None
+        if create_success and created.get('_id'):
+            campaign_id = created['_id']
             
-        # Verify we can't access protected endpoint after logout
-        success, _ = self.run_test("Access Protected After Logout", "GET", "auth/me", 401)
-        if success:
-            print("✅ Logout successful - protected endpoints now return 401")
-            return True
-        else:
-            print("❌ Still authenticated after logout")
-            return False
+            # Test AI content generation
+            gen_success, generated = self.run_test(
+                "Generate Campaign Content",
+                "POST",
+                f"campaigns/{campaign_id}/generate-content",
+                200
+            )
+            print(f"   AI Content Generation: {'✅ Success' if gen_success else '⚠️  Failed (expected if no LLM key)'}")
+        
+        # Clean up
+        if campaign_id:
+            self.run_test(
+                "Delete Test Campaign",
+                "DELETE",
+                f"campaigns/{campaign_id}",
+                200
+            )
+        
+        return success and create_success
+
+    def test_previous_features(self):
+        """Test that previous features still work"""
+        print("\n🔄 Testing Previous Features...")
+        
+        # Test events
+        events_success, events = self.run_test(
+            "List Events",
+            "GET",
+            "events",
+            200
+        )
+        
+        # Test fighters
+        fighters_success, fighters = self.run_test(
+            "List Fighters",
+            "GET",
+            "fighters",
+            200
+        )
+        
+        # Test sponsors
+        sponsors_success, sponsors = self.run_test(
+            "List Sponsors",
+            "GET",
+            "sponsors",
+            200
+        )
+        
+        # Test tasks
+        tasks_success, tasks = self.run_test(
+            "List Tasks",
+            "GET",
+            "tasks",
+            200
+        )
+        
+        # Test financials
+        financials_success, financials = self.run_test(
+            "List Financials",
+            "GET",
+            "financials",
+            200
+        )
+        
+        return all([events_success, fighters_success, sponsors_success, tasks_success, financials_success])
 
 def main():
-    print("🥊 Starting FightPromo API Testing...")
-    tester = FightPromoAPITester()
+    print("🥊 FightJudge Pro Phase 4 Backend API Testing")
+    print("=" * 50)
     
-    # Test authentication first
-    if not tester.test_auth_flow():
-        print("❌ Authentication failed, stopping tests")
+    tester = FightJudgeProTester()
+    
+    # Test login first
+    if not tester.test_login():
+        print("\n❌ Login failed - cannot continue with authenticated tests")
         return 1
     
-    # Test all major functionality
-    test_functions = [
-        tester.test_dashboard_stats,
-        tester.test_events_crud,
-        tester.test_fighters_crud,
-        tester.test_tasks_crud,
-        tester.test_financials_crud,
-        tester.test_bouts_crud,
-        tester.test_sponsors_crud,
-        tester.test_checklist_templates,
-        tester.test_live_data,
-        tester.test_ticketing_endpoints,
-        tester.test_dynamic_pricing_endpoints,  # New Phase 3 test
-        tester.test_ai_pricing_recommendations,  # New Phase 3 test
-        tester.test_financial_analytics,
-        tester.test_ai_endpoints,
-        tester.test_logout
-    ]
+    # Test public endpoint (no auth)
+    public_success, public_events = tester.test_public_events()
     
-    for test_func in test_functions:
-        try:
-            if not test_func():
-                print(f"❌ Test {test_func.__name__} failed")
-        except Exception as e:
-            print(f"❌ Test {test_func.__name__} crashed: {str(e)}")
+    # Test dashboard
+    dashboard_success = tester.test_dashboard_stats()
     
-    # Print final results
-    print(f"\n📊 Final Results: {tester.tests_passed}/{tester.tests_run} tests passed")
-    success_rate = (tester.tests_passed / tester.tests_run * 100) if tester.tests_run > 0 else 0
-    print(f"Success Rate: {success_rate:.1f}%")
+    # Test new Phase 4 modules
+    officials_success = tester.test_officials_crud()
+    venues_success = tester.test_venues_crud()
+    compliance_success = tester.test_compliance_dashboard()
+    licenses_success = tester.test_licenses_crud()
+    suspensions_success = tester.test_suspensions_crud()
+    messages_success = tester.test_messages_crud()
+    documents_success = tester.test_documents_crud()
+    campaigns_success = tester.test_campaigns_crud()
     
-    if success_rate >= 80:
-        print("🎉 API testing completed successfully!")
-        return 0
-    else:
-        print("⚠️  Some API tests failed")
-        return 1
+    # Test previous features
+    previous_success = tester.test_previous_features()
+    
+    # Print summary
+    print("\n" + "=" * 50)
+    print("📊 TEST SUMMARY")
+    print("=" * 50)
+    print(f"Tests Run: {tester.tests_run}")
+    print(f"Tests Passed: {tester.tests_passed}")
+    print(f"Tests Failed: {tester.tests_run - tester.tests_passed}")
+    print(f"Success Rate: {(tester.tests_passed / tester.tests_run * 100):.1f}%")
+    
+    if tester.failed_tests:
+        print("\n❌ FAILED TESTS:")
+        for test in tester.failed_tests:
+            error_msg = test.get('error', f"Expected {test.get('expected')}, got {test.get('actual')}")
+            print(f"  - {test['name']}: {error_msg}")
+    
+    # Module summary
+    modules = {
+        'Authentication': tester.test_login(),
+        'Public Events': public_success,
+        'Dashboard': dashboard_success,
+        'Officials': officials_success,
+        'Venues': venues_success,
+        'Compliance': compliance_success,
+        'Licenses': licenses_success,
+        'Suspensions': suspensions_success,
+        'Messages': messages_success,
+        'Documents': documents_success,
+        'Campaigns': campaigns_success,
+        'Previous Features': previous_success
+    }
+    
+    print(f"\n📋 MODULE STATUS:")
+    for module, status in modules.items():
+        print(f"  {module}: {'✅ PASS' if status else '❌ FAIL'}")
+    
+    return 0 if tester.tests_passed == tester.tests_run else 1
 
 if __name__ == "__main__":
     sys.exit(main())

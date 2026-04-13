@@ -201,6 +201,99 @@ class TicketCheckoutInput(BaseModel):
     quantity: int = 1
     origin_url: str
 
+class OfficialInput(BaseModel):
+    name: str
+    role: str  # referee, judge, announcer, timekeeper, inspector, cutman, physician
+    email: str = ""
+    phone: str = ""
+    state_licenses: List[dict] = []  # [{state, license_number, expiry}]
+    rating: int = 0
+    status: str = "active"
+    notes: str = ""
+
+class VenueInput(BaseModel):
+    name: str
+    address: str = ""
+    city: str = ""
+    state: str = ""
+    capacity: int = 0
+    contact_name: str = ""
+    contact_email: str = ""
+    contact_phone: str = ""
+    rental_cost: float = 0
+    specs: dict = {}  # ring_type, dressing_rooms, loading_dock, etc.
+    status: str = "available"
+    notes: str = ""
+
+class MedicalClearanceInput(BaseModel):
+    fighter_id: str
+    type: str  # pre_fight_physical, post_fight_physical, mri, blood_work, eye_exam
+    date: str
+    result: str = "cleared"  # cleared, failed, pending
+    expiry: str = ""
+    doctor: str = ""
+    notes: str = ""
+
+class FighterContractInput(BaseModel):
+    fighter_id: str
+    type: str  # bout_agreement, multi_fight, exclusive
+    event_id: str = ""
+    purse: float = 0
+    win_bonus: float = 0
+    start_date: str = ""
+    end_date: str = ""
+    status: str = "pending"  # pending, signed, active, completed, terminated
+    terms: str = ""
+
+class LicenseInput(BaseModel):
+    entity_type: str  # promoter, matchmaker, referee, judge, fighter, physician
+    entity_name: str
+    entity_id: str = ""
+    license_type: str = ""
+    state: str = ""
+    license_number: str = ""
+    issue_date: str = ""
+    expiry_date: str = ""
+    status: str = "active"
+    notes: str = ""
+
+class MedicalSuspensionInput(BaseModel):
+    fighter_id: str
+    fighter_name: str = ""
+    type: str  # no_contact, no_sparring, medical_clearance_required
+    start_date: str
+    end_date: str
+    reason: str = ""
+    cleared: bool = False
+    cleared_by: str = ""
+    cleared_date: str = ""
+
+class MessageInput(BaseModel):
+    to_type: str = "user"  # user, fighter, official, broadcast
+    to_id: str = ""
+    to_name: str = ""
+    subject: str
+    body: str
+    priority: str = "normal"
+
+class DocumentInput(BaseModel):
+    name: str
+    type: str  # bout_agreement, venue_contract, sponsor_contract, medical_form, waiver, commission_filing
+    event_id: str = ""
+    fighter_id: str = ""
+    content: str = ""
+    status: str = "draft"  # draft, sent, signed, filed
+    notes: str = ""
+
+class CampaignInput(BaseModel):
+    name: str
+    type: str  # email, sms, social_post
+    event_id: str = ""
+    content: str = ""
+    target_audience: str = "all"
+    scheduled_at: str = ""
+    status: str = "draft"  # draft, scheduled, sent, cancelled
+
 # ── Auth Endpoints ──
 @api_router.post("/auth/register")
 async def register(input: RegisterInput, response: Response):
@@ -1025,6 +1118,366 @@ Provide: 1) Risk alerts 2) Missing tasks 3) Timeline recommendations 4) Complian
         logger.error(f"AI smart reminders error: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate smart reminders")
 
+# ── Officials & Staff ──
+@api_router.get("/officials")
+async def list_officials(role: Optional[str] = None, user: dict = Depends(get_current_user)):
+    query = {"role": role} if role else {}
+    result = []
+    async for o in db.officials.find(query):
+        result.append(serialize_doc(o))
+    return result
+
+@api_router.post("/officials")
+async def create_official(input: OfficialInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.officials.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
+@api_router.put("/officials/{official_id}")
+async def update_official(official_id: str, input: OfficialInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    await db.officials.update_one({"_id": ObjectId(official_id)}, {"$set": doc})
+    o = await db.officials.find_one({"_id": ObjectId(official_id)})
+    return serialize_doc(o)
+
+@api_router.delete("/officials/{official_id}")
+async def delete_official(official_id: str, user: dict = Depends(get_current_user)):
+    await db.officials.delete_one({"_id": ObjectId(official_id)})
+    return {"message": "Official removed"}
+
+# ── Venues ──
+@api_router.get("/venues")
+async def list_venues(user: dict = Depends(get_current_user)):
+    result = []
+    async for v in db.venues.find({}):
+        result.append(serialize_doc(v))
+    return result
+
+@api_router.post("/venues")
+async def create_venue(input: VenueInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.venues.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
+@api_router.put("/venues/{venue_id}")
+async def update_venue(venue_id: str, input: VenueInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    await db.venues.update_one({"_id": ObjectId(venue_id)}, {"$set": doc})
+    v = await db.venues.find_one({"_id": ObjectId(venue_id)})
+    return serialize_doc(v)
+
+@api_router.delete("/venues/{venue_id}")
+async def delete_venue(venue_id: str, user: dict = Depends(get_current_user)):
+    await db.venues.delete_one({"_id": ObjectId(venue_id)})
+    return {"message": "Venue removed"}
+
+# ── Fighter Medical Clearances ──
+@api_router.get("/medicals")
+async def list_medicals(fighter_id: Optional[str] = None, user: dict = Depends(get_current_user)):
+    query = {"fighter_id": fighter_id} if fighter_id else {}
+    result = []
+    async for m in db.fighter_medicals.find(query).sort("date", -1):
+        result.append(serialize_doc(m))
+    return result
+
+@api_router.post("/medicals")
+async def create_medical(input: MedicalClearanceInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.fighter_medicals.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
+@api_router.delete("/medicals/{medical_id}")
+async def delete_medical(medical_id: str, user: dict = Depends(get_current_user)):
+    await db.fighter_medicals.delete_one({"_id": ObjectId(medical_id)})
+    return {"message": "Record removed"}
+
+# ── Fighter Contracts ──
+@api_router.get("/contracts")
+async def list_contracts(fighter_id: Optional[str] = None, event_id: Optional[str] = None, user: dict = Depends(get_current_user)):
+    query = {}
+    if fighter_id: query["fighter_id"] = fighter_id
+    if event_id: query["event_id"] = event_id
+    result = []
+    async for c in db.fighter_contracts.find(query):
+        result.append(serialize_doc(c))
+    return result
+
+@api_router.post("/contracts")
+async def create_contract(input: FighterContractInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["created_by"] = user["_id"]
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.fighter_contracts.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
+@api_router.put("/contracts/{contract_id}")
+async def update_contract(contract_id: str, input: FighterContractInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    await db.fighter_contracts.update_one({"_id": ObjectId(contract_id)}, {"$set": doc})
+    c = await db.fighter_contracts.find_one({"_id": ObjectId(contract_id)})
+    return serialize_doc(c)
+
+@api_router.delete("/contracts/{contract_id}")
+async def delete_contract(contract_id: str, user: dict = Depends(get_current_user)):
+    await db.fighter_contracts.delete_one({"_id": ObjectId(contract_id)})
+    return {"message": "Contract removed"}
+
+# ── Licenses & Compliance ──
+@api_router.get("/licenses")
+async def list_licenses(entity_type: Optional[str] = None, user: dict = Depends(get_current_user)):
+    query = {"entity_type": entity_type} if entity_type else {}
+    result = []
+    async for l in db.licenses.find(query):
+        result.append(serialize_doc(l))
+    return result
+
+@api_router.post("/licenses")
+async def create_license(input: LicenseInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.licenses.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
+@api_router.put("/licenses/{license_id}")
+async def update_license(license_id: str, input: LicenseInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    await db.licenses.update_one({"_id": ObjectId(license_id)}, {"$set": doc})
+    l = await db.licenses.find_one({"_id": ObjectId(license_id)})
+    return serialize_doc(l)
+
+@api_router.delete("/licenses/{license_id}")
+async def delete_license(license_id: str, user: dict = Depends(get_current_user)):
+    await db.licenses.delete_one({"_id": ObjectId(license_id)})
+    return {"message": "License removed"}
+
+# ── Medical Suspensions ──
+@api_router.get("/suspensions")
+async def list_suspensions(fighter_id: Optional[str] = None, active_only: bool = False, user: dict = Depends(get_current_user)):
+    query = {}
+    if fighter_id: query["fighter_id"] = fighter_id
+    if active_only: query["cleared"] = False
+    result = []
+    async for s in db.medical_suspensions.find(query).sort("end_date", -1):
+        result.append(serialize_doc(s))
+    return result
+
+@api_router.post("/suspensions")
+async def create_suspension(input: MedicalSuspensionInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.medical_suspensions.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
+@api_router.patch("/suspensions/{suspension_id}/clear")
+async def clear_suspension(suspension_id: str, user: dict = Depends(get_current_user)):
+    await db.medical_suspensions.update_one(
+        {"_id": ObjectId(suspension_id)},
+        {"$set": {"cleared": True, "cleared_by": user.get("name", ""), "cleared_date": datetime.now(timezone.utc).isoformat()}}
+    )
+    s = await db.medical_suspensions.find_one({"_id": ObjectId(suspension_id)})
+    return serialize_doc(s)
+
+@api_router.get("/compliance/dashboard")
+async def compliance_dashboard(user: dict = Depends(get_current_user)):
+    expiring_licenses = []
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    thirty_days = (datetime.now(timezone.utc) + timedelta(days=30)).strftime("%Y-%m-%d")
+    async for l in db.licenses.find({"expiry_date": {"$lte": thirty_days, "$gte": today}}):
+        expiring_licenses.append(serialize_doc(l))
+    active_suspensions = await db.medical_suspensions.count_documents({"cleared": False})
+    total_licenses = await db.licenses.count_documents({})
+    expired_licenses = 0
+    async for l in db.licenses.find({"expiry_date": {"$lt": today}}):
+        expired_licenses += 1
+    pending_clearances = await db.fighter_medicals.count_documents({"result": "pending"})
+    unsigned_contracts = await db.fighter_contracts.count_documents({"status": "pending"})
+    return {
+        "expiring_licenses": expiring_licenses,
+        "expiring_count": len(expiring_licenses),
+        "active_suspensions": active_suspensions,
+        "total_licenses": total_licenses,
+        "expired_licenses": expired_licenses,
+        "pending_clearances": pending_clearances,
+        "unsigned_contracts": unsigned_contracts
+    }
+
+# ── Messages / Communication ──
+@api_router.get("/messages")
+async def list_messages(user: dict = Depends(get_current_user)):
+    result = []
+    async for m in db.messages.find({"$or": [{"from_id": user["_id"]}, {"to_id": user["_id"]}, {"to_type": "broadcast"}]}).sort("created_at", -1).limit(100):
+        result.append(serialize_doc(m))
+    return result
+
+@api_router.post("/messages")
+async def create_message(input: MessageInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["from_id"] = user["_id"]
+    doc["from_name"] = user.get("name", "")
+    doc["read"] = False
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.messages.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
+@api_router.patch("/messages/{message_id}/read")
+async def mark_message_read(message_id: str, user: dict = Depends(get_current_user)):
+    await db.messages.update_one({"_id": ObjectId(message_id)}, {"$set": {"read": True}})
+    return {"message": "Marked as read"}
+
+@api_router.get("/messages/unread-count")
+async def unread_count(user: dict = Depends(get_current_user)):
+    count = await db.messages.count_documents({"to_id": user["_id"], "read": False})
+    return {"count": count}
+
+# ── Documents ──
+@api_router.get("/documents")
+async def list_documents(type: Optional[str] = None, event_id: Optional[str] = None, user: dict = Depends(get_current_user)):
+    query = {}
+    if type: query["type"] = type
+    if event_id: query["event_id"] = event_id
+    result = []
+    async for d in db.documents.find(query).sort("created_at", -1):
+        result.append(serialize_doc(d))
+    return result
+
+@api_router.post("/documents")
+async def create_document(input: DocumentInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["created_by"] = user["_id"]
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.documents.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
+@api_router.put("/documents/{doc_id}")
+async def update_document(doc_id: str, input: DocumentInput, user: dict = Depends(get_current_user)):
+    doc_data = input.model_dump()
+    doc_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.documents.update_one({"_id": ObjectId(doc_id)}, {"$set": doc_data})
+    d = await db.documents.find_one({"_id": ObjectId(doc_id)})
+    return serialize_doc(d)
+
+@api_router.delete("/documents/{doc_id}")
+async def delete_document(doc_id: str, user: dict = Depends(get_current_user)):
+    await db.documents.delete_one({"_id": ObjectId(doc_id)})
+    return {"message": "Document deleted"}
+
+@api_router.post("/documents/generate")
+async def generate_document(type: str, event_id: str, fighter_id: str = "", user: dict = Depends(get_current_user)):
+    try:
+        event = await db.events.find_one({"_id": ObjectId(event_id)}) if event_id else None
+        fighter = await db.fighters.find_one({"_id": ObjectId(fighter_id)}) if fighter_id else None
+        chat = LlmChat(
+            api_key=os.environ.get("EMERGENT_LLM_KEY", ""),
+            session_id=f"doc-{uuid.uuid4()}",
+            system_message="You are a legal document specialist for combat sports. Generate professional document templates. Use standard legal language appropriate for combat sports events."
+        )
+        context = f"Event: {event.get('title', 'N/A') if event else 'N/A'}, Date: {event.get('date', 'N/A') if event else 'N/A'}, Venue: {event.get('venue', 'N/A') if event else 'N/A'}"
+        if fighter:
+            context += f"\nFighter: {fighter.get('name', 'N/A')}, Weight: {fighter.get('weight_class', 'N/A')}"
+        prompt = f"Generate a {type.replace('_', ' ')} document template for a combat sports event.\nContext: {context}\nGenerate the full document with placeholders for signatures and dates."
+        msg = UserMessage(text=prompt)
+        result = await chat.send_message(msg)
+        doc = {"name": f"{type.replace('_', ' ').title()} - {event.get('title', 'Event') if event else 'Event'}", "type": type, "event_id": event_id, "fighter_id": fighter_id, "content": result, "status": "draft", "created_by": user["_id"], "created_at": datetime.now(timezone.utc).isoformat()}
+        res = await db.documents.insert_one(doc)
+        doc["_id"] = str(res.inserted_id)
+        return doc
+    except Exception as e:
+        logger.error(f"Document generation error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate document")
+
+# ── Marketing Campaigns ──
+@api_router.get("/campaigns")
+async def list_campaigns(user: dict = Depends(get_current_user)):
+    result = []
+    async for c in db.campaigns.find({}).sort("created_at", -1):
+        result.append(serialize_doc(c))
+    return result
+
+@api_router.post("/campaigns")
+async def create_campaign(input: CampaignInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    doc["created_by"] = user["_id"]
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.campaigns.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
+@api_router.put("/campaigns/{campaign_id}")
+async def update_campaign(campaign_id: str, input: CampaignInput, user: dict = Depends(get_current_user)):
+    doc = input.model_dump()
+    await db.campaigns.update_one({"_id": ObjectId(campaign_id)}, {"$set": doc})
+    c = await db.campaigns.find_one({"_id": ObjectId(campaign_id)})
+    return serialize_doc(c)
+
+@api_router.delete("/campaigns/{campaign_id}")
+async def delete_campaign(campaign_id: str, user: dict = Depends(get_current_user)):
+    await db.campaigns.delete_one({"_id": ObjectId(campaign_id)})
+    return {"message": "Campaign deleted"}
+
+@api_router.post("/campaigns/{campaign_id}/generate-content")
+async def generate_campaign_content(campaign_id: str, user: dict = Depends(get_current_user)):
+    campaign = await db.campaigns.find_one({"_id": ObjectId(campaign_id)})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    event = None
+    if campaign.get("event_id"):
+        event = await db.events.find_one({"_id": ObjectId(campaign["event_id"])})
+    try:
+        chat = LlmChat(
+            api_key=os.environ.get("EMERGENT_LLM_KEY", ""),
+            session_id=f"campaign-{uuid.uuid4()}",
+            system_message="You are a combat sports marketing expert. Create compelling marketing content for fight events."
+        )
+        event_info = f"Event: {event.get('title', 'N/A')}, Date: {event.get('date', 'N/A')}, Venue: {event.get('venue', 'N/A')}" if event else "General promotion"
+        prompt = f"Create {campaign.get('type', 'email')} marketing content for a combat sports event.\n{event_info}\nCampaign name: {campaign.get('name', '')}\nTarget: {campaign.get('target_audience', 'all')}\nMake it exciting and drive ticket sales/engagement."
+        msg = UserMessage(text=prompt)
+        result = await chat.send_message(msg)
+        await db.campaigns.update_one({"_id": ObjectId(campaign_id)}, {"$set": {"content": result, "updated_at": datetime.now(timezone.utc).isoformat()}})
+        return {"content": result}
+    except Exception as e:
+        logger.error(f"Campaign content generation error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate content")
+
+# ── Public Event Page (No Auth) ──
+@api_router.get("/public/events")
+async def public_events():
+    result = []
+    async for ev in db.events.find({"status": {"$in": ["announced", "confirmed"]}}).sort("date", 1):
+        safe = {"title": ev.get("title"), "date": ev.get("date"), "venue": ev.get("venue"), "city": ev.get("city"), "description": ev.get("description"), "status": ev.get("status"), "ticket_price": ev.get("ticket_price"), "capacity": ev.get("capacity"), "id": str(ev["_id"])}
+        result.append(safe)
+    return result
+
+@api_router.get("/public/events/{event_id}")
+async def public_event_detail(event_id: str):
+    ev = await db.events.find_one({"_id": ObjectId(event_id)})
+    if not ev:
+        raise HTTPException(status_code=404, detail="Event not found")
+    bouts = []
+    async for b in db.bouts.find({"event_id": event_id}).sort("bout_order", 1):
+        bout = {"weight_class": b.get("weight_class"), "rounds": b.get("rounds"), "is_main_event": b.get("is_main_event"), "bout_order": b.get("bout_order")}
+        for key in ["fighter1_id", "fighter2_id"]:
+            try:
+                fighter = await db.fighters.find_one({"_id": ObjectId(b[key])})
+                if fighter:
+                    bout[key.replace("_id", "_name")] = fighter.get("name", "TBD")
+                    bout[key.replace("_id", "_nickname")] = fighter.get("nickname", "")
+                    bout[key.replace("_id", "_record")] = f"{fighter.get('wins',0)}-{fighter.get('losses',0)}-{fighter.get('draws',0)}"
+            except Exception:
+                pass
+        bouts.append(bout)
+    return {"title": ev.get("title"), "date": ev.get("date"), "venue": ev.get("venue"), "city": ev.get("city"), "description": ev.get("description"), "status": ev.get("status"), "bouts": bouts}
+
 # ── Users ──
 @api_router.get("/users")
 async def list_users(user: dict = Depends(get_current_user)):
@@ -1120,6 +1573,26 @@ async def seed_admin():
 
     await db.users.create_index("email", unique=True)
     await db.login_attempts.create_index("identifier")
+
+    # Seed officials
+    if await db.officials.count_documents({}) == 0:
+        officials = [
+            {"name": "Mike Beltran", "role": "referee", "email": "mbeltran@refs.com", "phone": "555-0101", "state_licenses": [{"state": "Texas", "license_number": "REF-2024-001", "expiry": "2027-01-15"}], "rating": 5, "status": "active", "created_at": datetime.now(timezone.utc).isoformat()},
+            {"name": "Sal D'Amato", "role": "judge", "email": "sdamato@judges.com", "phone": "555-0102", "state_licenses": [{"state": "Nevada", "license_number": "JDG-2024-012", "expiry": "2026-12-01"}], "rating": 4, "status": "active", "created_at": datetime.now(timezone.utc).isoformat()},
+            {"name": "Derek Cleary", "role": "judge", "email": "dcleary@judges.com", "phone": "555-0103", "state_licenses": [], "rating": 4, "status": "active", "created_at": datetime.now(timezone.utc).isoformat()},
+            {"name": "Bruce Buffer", "role": "announcer", "email": "bbuffer@announce.com", "phone": "555-0104", "state_licenses": [], "rating": 5, "status": "active", "created_at": datetime.now(timezone.utc).isoformat()},
+            {"name": "Dr. Sarah Chen", "role": "physician", "email": "schen@medical.com", "phone": "555-0105", "state_licenses": [{"state": "Texas", "license_number": "PHY-2024-005", "expiry": "2027-06-30"}], "rating": 5, "status": "active", "created_at": datetime.now(timezone.utc).isoformat()},
+        ]
+        await db.officials.insert_many(officials)
+
+    # Seed venues
+    if await db.venues.count_documents({}) == 0:
+        venues = [
+            {"name": "Madison Square Garden", "address": "4 Pennsylvania Plaza", "city": "New York", "state": "New York", "capacity": 20000, "contact_name": "Events Dept", "contact_email": "events@msg.com", "rental_cost": 150000, "specs": {"ring_type": "cage", "dressing_rooms": 8, "loading_dock": True}, "status": "available", "created_at": datetime.now(timezone.utc).isoformat()},
+            {"name": "T-Mobile Arena", "address": "3780 Las Vegas Blvd S", "city": "Las Vegas", "state": "Nevada", "capacity": 20000, "contact_name": "Booking Dept", "contact_email": "booking@tmobilearena.com", "rental_cost": 125000, "specs": {"ring_type": "cage", "dressing_rooms": 6, "loading_dock": True}, "status": "available", "created_at": datetime.now(timezone.utc).isoformat()},
+            {"name": "Warehouse Arena", "address": "1200 Industrial Blvd", "city": "Dallas", "state": "Texas", "capacity": 2000, "contact_name": "Tom Miller", "contact_email": "tom@warehousearena.com", "rental_cost": 15000, "specs": {"ring_type": "ring", "dressing_rooms": 2, "loading_dock": True}, "status": "available", "created_at": datetime.now(timezone.utc).isoformat()},
+        ]
+        await db.venues.insert_many(venues)
 
     cred_path = Path("/app/memory/test_credentials.md")
     cred_path.parent.mkdir(parents=True, exist_ok=True)
