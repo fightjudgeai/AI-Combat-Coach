@@ -3,15 +3,29 @@ ufc_fight_pass_scraper.py
 =========================
 Production-ready async scraper for UFC Fight Pass.
 
+Default mode: scrape the 11 "UFC Title Fights" playlists (369 videos).
+
 Pipeline:
-  1. Login  →  2. Discover events  →  3. Extract fight cards
-  →  4. Grab video URL  →  5. Download (HLS via FFmpeg, MP4 via aiohttp)
+  1. Login  →  2. Scrape playlist pages  →  3. Extract video URLs
+  →  4. Download (HLS via FFmpeg, MP4 via aiohttp)
+
+Output structure:
+  ufc_fights/<Playlist Name>/<Fight Title>.mp4
 
 Usage:
     UFC_EMAIL=you@example.com UFC_PASSWORD=secret python scripts/ufc_fight_pass_scraper.py
 
+    # Limit fights per playlist (useful for testing)
+    UFC_MAX_FIGHTS=2 UFC_EMAIL=… UFC_PASSWORD=… python scripts/ufc_fight_pass_scraper.py
+
+    # Show browser window
+    UFC_HEADLESS=0 UFC_EMAIL=… UFC_PASSWORD=… python scripts/ufc_fight_pass_scraper.py
+
+    # Override playlists (comma-separated URLs)
+    UFC_PLAYLISTS=https://ufcfightpass.com/playlist/22872 UFC_EMAIL=… UFC_PASSWORD=… python …
+
 Requirements:
-    pip install playwright aiohttp beautifulsoup4
+    pip install "playwright==1.49.0" aiohttp beautifulsoup4
     playwright install chromium
     # ffmpeg must be on $PATH
 """
@@ -19,14 +33,14 @@ Requirements:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import AsyncIterator
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 import aiohttp
 from playwright.async_api import (
@@ -38,21 +52,36 @@ from playwright.async_api import (
 )
 
 # ---------------------------------------------------------------------------
+# Target playlists  –  369 UFC Title Fights across 11 playlists
+# ---------------------------------------------------------------------------
+
+TITLE_FIGHT_PLAYLISTS: list[str] = [
+    "https://ufcfightpass.com/playlist/22872",
+    "https://ufcfightpass.com/playlist/22970",
+    "https://ufcfightpass.com/playlist/22971",
+    "https://ufcfightpass.com/playlist/22972",
+    "https://ufcfightpass.com/playlist/22974",
+    "https://ufcfightpass.com/playlist/23085",
+    "https://ufcfightpass.com/playlist/23086",
+    "https://ufcfightpass.com/playlist/23088",
+    "https://ufcfightpass.com/playlist/23158",
+    "https://ufcfightpass.com/playlist/23159",
+    "https://ufcfightpass.com/playlist/23160",
+]
+
+# ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-BASE_URL = "https://ufcfightpass.com"
-LOGIN_URL = f"{BASE_URL}/login"
-EVENTS_URL = f"{BASE_URL}/events"
-
-OUTPUT_ROOT = Path("ufc_fights")           # local download root
-COOKIES_FILE = Path(".ufc_cookies.json")   # persisted session
+BASE_URL    = "https://ufcfightpass.com"
+LOGIN_URL   = f"{BASE_URL}/login"
+OUTPUT_ROOT = Path("ufc_fights")          # download root
+COOKIES_FILE = Path(".ufc_cookies.json")  # persisted session
 
 MAX_CONCURRENT_DOWNLOADS = 3
 MAX_RETRIES = 3
-RETRY_BASE_DELAY = 2.0                     # seconds; doubles each attempt
+RETRY_BASE_DELAY = 2.0  # seconds; doubles each attempt
 
-# Rotate user agents to reduce fingerprinting risk
 USER_AGENTS = [
     (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -83,7 +112,7 @@ log = logging.getLogger("ufc_fp_scraper")
 # ---------------------------------------------------------------------------
 
 def sanitize(name: str) -> str:
-    """Strip characters that are unsafe in directory / file names."""
+    """Strip characters unsafe in directory / file names."""
     return re.sub(r'[\\/:*?"<>|]', "_", name).strip()
 
 
@@ -91,10 +120,9 @@ def is_hls(url: str) -> bool:
     return ".m3u8" in urlparse(url).path
 
 
-async def retry(coro_fn, *args, retries: int = MAX_RETRIES, **kwargs):
+async def retry_async(coro_fn, *args, retries: int = MAX_RETRIES, **kwargs):
     """
-    Call an async coroutine function with exponential-backoff retry.
-    `coro_fn` must be a *callable* that returns a coroutine (not already awaited).
+    Call an async callable with exponential-backoff retry on any exception.
     """
     last_exc: Exception | None = None
     for attempt in range(1, retries + 1):
@@ -115,44 +143,57 @@ async def retry(coro_fn, *args, retries: int = MAX_RETRIES, **kwargs):
 # Browser / context setup
 # ---------------------------------------------------------------------------
 
-async def build_context(pw: Playwright, *, headless: bool = True) -> tuple[Browser, BrowserContext]:
+async def build_context(
+    pw: Playwright, *, headless: bool = True
+) -> tuple[Browser, BrowserContext]:
     """
-    Launch a Chromium browser with a realistic context.
-    Loads saved cookies if available so we can skip login on repeat runs.
+    Launch Chromium with a realistic context and restore any saved cookies.
     """
     import random
 
-    browser = await pw.chromium.launch(
+    # Resolve the installed Chromium binary; prefer headless-shell for headless
+    # mode (faster), fall back to full Chrome if not present.
+    _hs = Path("/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell")
+    _ch = Path("/opt/pw-browsers/chromium-1194/chrome-linux/chrome")
+    _exe: str | None = None
+    if headless and _hs.exists():
+        _exe = str(_hs)
+    elif _ch.exists():
+        _exe = str(_ch)
+
+    launch_kwargs: dict = dict(
         headless=headless,
         args=[
             "--disable-blink-features=AutomationControlled",
             "--no-sandbox",
         ],
     )
+    if _exe:
+        launch_kwargs["executable_path"] = _exe
+        log.info("Using Chromium binary: %s", _exe)
+
+    browser = await pw.chromium.launch(**launch_kwargs)
 
     context = await browser.new_context(
         user_agent=random.choice(USER_AGENTS),
         viewport={"width": 1920, "height": 1080},
         locale="en-US",
         timezone_id="America/New_York",
-        # Pretend we are a real browser by injecting typical headers
         extra_http_headers={
             "Accept-Language": "en-US,en;q=0.9",
             "Accept-Encoding": "gzip, deflate, br",
         },
     )
 
-    # Mask navigator.webdriver so bot-detection scripts see a real browser
+    # Prevent bot-detection scripts from seeing navigator.webdriver = true
     await context.add_init_script(
         "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
     )
 
-    # Restore a prior session if we have one
     if COOKIES_FILE.exists():
-        import json
         cookies = json.loads(COOKIES_FILE.read_text())
         await context.add_cookies(cookies)
-        log.info("Loaded %d cookies from %s", len(cookies), COOKIES_FILE)
+        log.info("Restored %d cookies from %s", len(cookies), COOKIES_FILE)
 
     return browser, context
 
@@ -163,45 +204,39 @@ async def build_context(pw: Playwright, *, headless: bool = True) -> tuple[Brows
 
 async def login(page: Page, email: str, password: str) -> bool:
     """
-    Navigate to the Fight Pass login page and submit credentials.
-    Returns True if login succeeded, False otherwise.
-    Persists session cookies to COOKIES_FILE on success.
+    Submit credentials on the Fight Pass login page.
+    Saves cookies to COOKIES_FILE on success so future runs skip this step.
     """
     log.info("Navigating to login page…")
     await page.goto(LOGIN_URL, wait_until="networkidle", timeout=60_000)
 
-    # Fill email
     email_sel = 'input[type="email"], input[name="email"], input[id*="email"]'
     await page.wait_for_selector(email_sel, timeout=15_000)
     await page.fill(email_sel, email)
 
-    # Fill password
     pw_sel = 'input[type="password"]'
     await page.wait_for_selector(pw_sel, timeout=10_000)
     await page.fill(pw_sel, password)
 
-    # Submit – try a visible submit button first, fall back to Enter
-    submit_sel = 'button[type="submit"], button:has-text("Sign In"), button:has-text("Log In")'
-    submit_btn = page.locator(submit_sel).first
-    if await submit_btn.count() > 0:
-        await submit_btn.click()
+    submit_sel = (
+        'button[type="submit"], '
+        'button:has-text("Sign In"), '
+        'button:has-text("Log In")'
+    )
+    btn = page.locator(submit_sel).first
+    if await btn.count() > 0:
+        await btn.click()
     else:
         await page.keyboard.press("Enter")
 
-    # Wait for navigation away from the login URL
     try:
-        await page.wait_for_url(
-            lambda url: "login" not in url,
-            timeout=20_000,
-        )
+        await page.wait_for_url(lambda url: "login" not in url, timeout=25_000)
     except Exception:
-        log.error("Login may have failed – still on %s", page.url)
+        log.error("Login appears to have failed – still on %s", page.url)
         return False
 
-    log.info("Login successful, now at %s", page.url)
+    log.info("Logged in. Current URL: %s", page.url)
 
-    # Persist cookies for future runs
-    import json
     cookies = await page.context.cookies()
     COOKIES_FILE.write_text(json.dumps(cookies, indent=2))
     log.info("Saved %d cookies to %s", len(cookies), COOKIES_FILE)
@@ -210,207 +245,244 @@ async def login(page: Page, email: str, password: str) -> bool:
 
 async def ensure_authenticated(page: Page, email: str, password: str) -> None:
     """
-    Check whether the current session is already authenticated.
-    If not, perform login. Raises RuntimeError on failure.
+    Navigate to home; if not already logged in, call login(). Raises on failure.
     """
     await page.goto(BASE_URL, wait_until="domcontentloaded", timeout=30_000)
-    # A logged-in page typically shows an avatar / account element
-    account_sel = '[data-testid="account-menu"], [aria-label*="account" i], .user-avatar'
-    already_in = await page.locator(account_sel).count() > 0
-    if already_in:
-        log.info("Session is already authenticated.")
+    account_sel = (
+        '[data-testid="account-menu"], '
+        '[aria-label*="account" i], '
+        '.user-avatar, '
+        '[class*="userMenu"], '
+        '[class*="ProfileMenu"]'
+    )
+    if await page.locator(account_sel).count() > 0:
+        log.info("Session already authenticated.")
         return
 
-    ok = await retry(login, page, email, password)
+    ok = await retry_async(login, page, email, password)
     if not ok:
         raise RuntimeError("Authentication failed after retries.")
 
 
 # ---------------------------------------------------------------------------
-# Event discovery
+# Playlist scraping
 # ---------------------------------------------------------------------------
 
-async def _scroll_until_stable(page: Page, *, max_scrolls: int = 30) -> None:
+async def _scroll_until_stable(
+    page: Page, *, max_scrolls: int = 60, pause: float = 1.5
+) -> None:
     """
-    Scroll to the bottom of an infinitely-scrolling page until no new content loads.
+    Scroll to the bottom repeatedly until the page height stops growing.
+    Handles infinite-scroll / lazy-loaded grids.
     """
     prev_height = 0
-    for _ in range(max_scrolls):
+    for i in range(max_scrolls):
         cur_height: int = await page.evaluate("document.body.scrollHeight")
         if cur_height == prev_height:
+            log.debug("Scroll stable after %d iterations (height=%d)", i, cur_height)
             break
         await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-        await asyncio.sleep(1.5)          # give the page time to lazy-load more items
+        await asyncio.sleep(pause)
         prev_height = cur_height
 
 
-async def discover_events(page: Page, *, max_events: int | None = None) -> list[dict]:
+async def scrape_playlist_videos(
+    page: Page,
+    playlist_url: str,
+    *,
+    max_videos: int | None = None,
+) -> tuple[str, list[dict]]:
     """
-    Navigate to the Events listing and return a list of
-    {'name': str, 'url': str} dicts, newest-first.
+    Navigate to a Fight Pass playlist page and extract all video entries.
 
-    Fight Pass renders events dynamically, so we scroll to trigger lazy loading.
+    Returns:
+        (playlist_name, [{'url': str, 'name': str}, …])
     """
-    log.info("Discovering events at %s …", EVENTS_URL)
-    await page.goto(EVENTS_URL, wait_until="networkidle", timeout=60_000)
+    log.info("Opening playlist: %s", playlist_url)
+    await page.goto(playlist_url, wait_until="networkidle", timeout=60_000)
 
-    # Wait for at least one event card to appear
-    card_sel = '[data-testid*="event-card"], .event-card, a[href*="/events/"]'
-    await page.wait_for_selector(card_sel, timeout=20_000)
+    # ── Extract playlist title ────────────────────────────────────────────
+    # Fight Pass uses various heading selectors; try most-specific first.
+    title_sel = (
+        "h1, "
+        '[class*="playlistTitle"], '
+        '[class*="PlaylistTitle"], '
+        '[class*="pageTitle"], '
+        '[data-testid*="title"]'
+    )
+    playlist_name = "UFC_Title_Fights"  # fallback
+    try:
+        title_el = page.locator(title_sel).first
+        if await title_el.count() > 0:
+            text = (await title_el.inner_text()).strip()
+            if text:
+                playlist_name = text
+    except Exception:
+        pass
+    log.info("Playlist name: '%s'", playlist_name)
 
+    # ── Wait for the first video card ────────────────────────────────────
+    card_sel = (
+        'a[href*="/video/"], '
+        'a[href*="/fight/"], '
+        'a[href*="/watch/"], '
+        '[data-testid*="video"], '
+        '[data-testid*="card"]'
+    )
+    try:
+        await page.wait_for_selector(card_sel, timeout=20_000)
+    except Exception:
+        log.warning("No video cards found on %s after 20 s", playlist_url)
+        return playlist_name, []
+
+    # ── Scroll to load all lazy items ────────────────────────────────────
     await _scroll_until_stable(page)
 
-    # Collect all event links
-    links = await page.evaluate(
+    # ── Extract all video links + titles ─────────────────────────────────
+    videos: list[dict] = await page.evaluate(
         """() => {
-            const anchors = Array.from(document.querySelectorAll('a[href*="/events/"]'));
-            return [...new Set(
-                anchors
-                    .filter(a => a.href && !a.href.endsWith('/events/'))
-                    .map(a => ({
-                        url: a.href,
-                        name: (a.querySelector('[class*="title"], h3, h4') || a).innerText.trim()
-                    }))
-            )];
+            // Candidate selectors for individual video/fight links
+            const anchors = Array.from(document.querySelectorAll(
+                'a[href*="/video/"], a[href*="/fight/"], a[href*="/watch/"]'
+            ));
+
+            const seen = new Set();
+            const results = [];
+
+            for (const a of anchors) {
+                const href = a.href;
+                if (!href || seen.has(href)) continue;
+                seen.add(href);
+
+                // Try progressively broader text sources for the title
+                const titleEl = (
+                    a.querySelector('[class*="title" i]') ||
+                    a.querySelector('[class*="name" i]')  ||
+                    a.querySelector('h2, h3, h4, p')
+                );
+                const rawName = titleEl
+                    ? titleEl.innerText.trim()
+                    : a.innerText.trim();
+
+                // Skip nav / UI links that have no meaningful title
+                if (!rawName || rawName.length < 3) continue;
+
+                results.push({ url: href, name: rawName });
+            }
+            return results;
         }"""
     )
 
-    events = [e for e in links if e["url"] and e["name"]]
-    if max_events:
-        events = events[:max_events]
+    if not videos:
+        log.warning("JS extraction returned 0 videos for %s", playlist_url)
+        return playlist_name, []
 
-    log.info("Found %d events.", len(events))
-    return events
+    if max_videos:
+        videos = videos[:max_videos]
 
-
-# ---------------------------------------------------------------------------
-# Fight card extraction
-# ---------------------------------------------------------------------------
-
-async def extract_fight_links(page: Page, event_url: str) -> list[dict]:
-    """
-    Navigate to a single event page and return a list of
-    {'name': str, 'url': str} fight dicts for that card.
-    """
-    log.info("Extracting fight card from %s …", event_url)
-    await page.goto(event_url, wait_until="networkidle", timeout=60_000)
-
-    # Fight cards are typically listed as clickable rows/cards
-    fight_sel = 'a[href*="/fight/"], a[href*="/video/"], [data-testid*="fight"]'
-    try:
-        await page.wait_for_selector(fight_sel, timeout=15_000)
-    except Exception:
-        log.warning("No fight links found on %s", event_url)
-        return []
-
-    fights = await page.evaluate(
-        """(fightSel) => {
-            const els = Array.from(document.querySelectorAll(fightSel));
-            return [...new Map(
-                els.map(a => {
-                    const titleEl = a.querySelector(
-                        '[class*="title"], [class*="fighter"], h3, h4, p'
-                    );
-                    return [a.href, {
-                        url: a.href,
-                        name: titleEl ? titleEl.innerText.trim() : a.innerText.trim()
-                    }];
-                })
-            ).values()].filter(f => f.url && f.name);
-        }""",
-        fight_sel,
-    )
-
-    log.info("  → %d fights found.", len(fights))
-    return fights
+    log.info("  → %d videos found in playlist '%s'", len(videos), playlist_name)
+    return playlist_name, videos
 
 
 # ---------------------------------------------------------------------------
 # Video URL extraction
 # ---------------------------------------------------------------------------
 
-async def _intercept_video_url(page: Page, fight_url: str) -> str | None:
+async def _intercept_video_url(page: Page, video_url: str) -> str | None:
     """
-    Navigate to a fight/video page, intercept network requests for
-    media manifests (.m3u8) or direct video files (.mp4), and return
-    the first URL found.
+    Navigate to a fight/video page and capture the media stream URL.
 
-    Fight Pass typically embeds video in an <iframe>; we handle that
-    by iterating all frames of the page.
+    Strategy (in order):
+      1. Playwright network interception – catches .m3u8 / .mp4 requests.
+      2. DOM inspection in every frame – checks <video>, JW Player, Bitmovin,
+         and inline <script> tags.
     """
     captured: list[str] = []
 
-    def on_request(request) -> None:
+    def _on_request(request) -> None:
         url = request.url
         if re.search(r"\.(m3u8|mp4)(\?|$)", url, re.IGNORECASE):
             captured.append(url)
-            log.debug("Intercepted media URL: %s", url)
+            log.debug("Intercepted media request: %s", url)
 
-    page.on("request", on_request)
+    page.on("request", _on_request)
 
-    log.info("Loading video page: %s", fight_url)
-    await page.goto(fight_url, wait_until="networkidle", timeout=60_000)
+    log.info("Loading video page: %s", video_url)
+    await page.goto(video_url, wait_until="networkidle", timeout=60_000)
 
-    # Give JS players a moment to initialize and fire their first requests
-    await asyncio.sleep(3)
+    # Give the JS player time to initialise and fire its first manifest request
+    await asyncio.sleep(4)
 
-    # If we captured something via network interception, return it now
     if captured:
-        return captured[0]
+        # Prefer master/top-level manifests over segment playlists
+        master = next(
+            (u for u in captured if "master" in u.lower() or "index.m3u8" in u.lower()),
+            captured[0],
+        )
+        return master
 
-    # --- Fallback: search iframes for a video element or source ---
+    # Fallback: inspect every frame's DOM
     for frame in page.frames:
         src = await _extract_from_frame(frame)
         if src:
             return src
 
-    log.warning("No video URL found on %s", fight_url)
+    log.warning("No video URL found for %s", video_url)
     return None
 
 
 async def _extract_from_frame(frame) -> str | None:
     """
-    Look inside a single frame for <video src>, <source src>, or
-    a jwplayer / Bitmovin player configuration object.
+    Inspect a single frame for video sources via DOM, JW Player, Bitmovin,
+    or inline script JSON blobs.
     """
     try:
-        # Direct video/source tags
-        src = await frame.evaluate(
+        src: str | None = await frame.evaluate(
             """() => {
+                // 1. HTML5 <video> / <source>
                 const v = document.querySelector('video[src]');
-                if (v) return v.src;
+                if (v && v.src) return v.src;
                 const s = document.querySelector('source[src]');
-                if (s) return s.src;
+                if (s && s.src) return s.src;
 
-                // JW Player
+                // 2. JW Player
                 if (window.jwplayer) {
                     try {
                         const p = jwplayer();
-                        if (p && p.getPlaylistItem) {
-                            const item = p.getPlaylistItem();
-                            if (item && item.file) return item.file;
-                        }
+                        const item = p && p.getPlaylistItem && p.getPlaylistItem();
+                        if (item && item.file) return item.file;
                     } catch (_) {}
                 }
 
-                // Bitmovin
+                // 3. Bitmovin Player
                 if (window.bitmovin) {
                     try {
                         const cfg = bitmovin.player('player').getConfig();
-                        if (cfg && cfg.source) {
+                        if (cfg && cfg.source)
                             return cfg.source.hls || cfg.source.progressive || null;
+                    } catch (_) {}
+                }
+
+                // 4. VideoJS
+                if (window.videojs) {
+                    try {
+                        const players = Object.values(videojs.players || {});
+                        for (const p of players) {
+                            const src = p.currentSrc && p.currentSrc();
+                            if (src) return src;
                         }
                     } catch (_) {}
                 }
 
-                // Search inline scripts for m3u8/mp4 URLs
-                const scripts = Array.from(document.querySelectorAll('script:not([src])'));
-                for (const s of scripts) {
-                    const m = s.textContent.match(/"(https?[^"]+\\.m3u8[^"]*)"/);
+                // 5. Scan inline <script> tags for m3u8 / mp4 URL literals
+                for (const sc of document.querySelectorAll('script:not([src])')) {
+                    let m;
+                    m = sc.textContent.match(/"(https?[^"]+\\.m3u8[^"]*)"/);
                     if (m) return m[1];
-                    const m2 = s.textContent.match(/"(https?[^"]+\\.mp4[^"]*)"/);
-                    if (m2) return m2[1];
+                    m = sc.textContent.match(/"(https?[^"]+\\.mp4[^"]*)"/);
+                    if (m) return m[1];
                 }
+
                 return null;
             }"""
         )
@@ -427,31 +499,29 @@ async def _extract_from_frame(frame) -> str | None:
 
 async def download_hls(m3u8_url: str, output_path: Path) -> None:
     """
-    Use FFmpeg to download and remux an HLS stream into a single .mp4 file.
-    Runs in a thread pool so the event loop stays unblocked.
+    Stream-copy an HLS playlist into a single .mp4 via FFmpeg.
+    Runs in a thread-pool executor so the event loop stays unblocked.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
-        "ffmpeg",
-        "-y",                          # overwrite without asking
+        "ffmpeg", "-y",
         "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
         "-i", m3u8_url,
-        "-c", "copy",                  # stream-copy (no re-encode)
-        "-movflags", "+faststart",     # optimise for streaming playback
+        "-c", "copy",
+        "-movflags", "+faststart",
         str(output_path),
     ]
-    log.info("FFmpeg: %s", " ".join(cmd))
-
+    log.info("FFmpeg → %s", output_path.name)
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, _run_ffmpeg, cmd)
-    log.info("HLS download complete → %s", output_path)
+    log.info("HLS done → %s", output_path)
 
 
 def _run_ffmpeg(cmd: list[str]) -> None:
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(
-            f"FFmpeg failed (exit {result.returncode}):\n{result.stderr[-2000:]}"
+            f"FFmpeg exited {result.returncode}:\n{result.stderr[-2000:]}"
         )
 
 
@@ -464,37 +534,34 @@ async def download_mp4(
     output_path: Path,
     *,
     session: aiohttp.ClientSession,
-    chunk_size: int = 1 << 20,  # 1 MiB
+    chunk_size: int = 1 << 20,   # 1 MiB
 ) -> None:
     """
-    Stream an MP4 file to disk using aiohttp, with a progress log every 50 MiB.
+    Stream an MP4 file to disk; logs progress every 50 MiB.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    log.info("Downloading MP4: %s", mp4_url)
+    log.info("Downloading MP4 → %s", output_path.name)
 
-    headers = {
-        "User-Agent": USER_AGENTS[0],
-        "Referer": BASE_URL,
-    }
-
+    headers = {"User-Agent": USER_AGENTS[0], "Referer": BASE_URL}
     async with session.get(mp4_url, headers=headers) as resp:
         resp.raise_for_status()
         total = int(resp.headers.get("Content-Length", 0))
         written = 0
-
         with output_path.open("wb") as fh:
             async for chunk in resp.content.iter_chunked(chunk_size):
                 fh.write(chunk)
                 written += len(chunk)
                 if total and written % (50 * chunk_size) < chunk_size:
-                    pct = written / total * 100
-                    log.info("  %.1f%% (%.1f / %.1f MiB)", pct, written / 1e6, total / 1e6)
+                    log.info(
+                        "  %.1f%%  (%.1f / %.1f MiB)",
+                        written / total * 100, written / 1e6, total / 1e6,
+                    )
 
-    log.info("MP4 download complete → %s (%.1f MiB)", output_path, written / 1e6)
+    log.info("MP4 done → %s  (%.1f MiB)", output_path, written / 1e6)
 
 
 # ---------------------------------------------------------------------------
-# Dispatcher: choose the right downloader
+# Dispatcher
 # ---------------------------------------------------------------------------
 
 async def download_video(
@@ -505,65 +572,67 @@ async def download_video(
 ) -> None:
     """Route to FFmpeg (HLS) or aiohttp (MP4) based on the URL."""
     if is_hls(video_url):
-        await retry(download_hls, video_url, output_path)
+        await retry_async(download_hls, video_url, output_path)
     else:
-        await retry(download_mp4, video_url, output_path, session=session)
+        await retry_async(download_mp4, video_url, output_path, session=session)
 
 
 # ---------------------------------------------------------------------------
-# Per-fight orchestration
+# Per-video orchestration
 # ---------------------------------------------------------------------------
 
-async def scrape_and_download_fight(
-    page: Page,
-    fight: dict,
-    event_name: str,
+async def process_video(
+    context: BrowserContext,
+    video: dict,
+    output_dir: Path,
     sem: asyncio.Semaphore,
     session: aiohttp.ClientSession,
 ) -> None:
     """
-    Full pipeline for one fight: extract video URL → download.
-    Concurrency is bounded by `sem`.
+    Open an isolated page, intercept the media URL, then download.
+    The semaphore limits how many downloads run simultaneously.
     """
-    fight_name = sanitize(fight["name"]) or "unknown_fight"
-    event_dir = OUTPUT_ROOT / sanitize(event_name)
-    output_path = event_dir / f"{fight_name}.mp4"
+    name = sanitize(video["name"]) or sanitize(video["url"].split("/")[-1])
+    output_path = output_dir / f"{name}.mp4"
 
     if output_path.exists():
-        log.info("Already downloaded, skipping: %s", output_path)
+        log.info("Skip (already exists): %s", output_path)
         return
 
     async with sem:
+        page = await context.new_page()
         try:
-            video_url = await retry(_intercept_video_url, page, fight["url"])
+            video_url = await retry_async(_intercept_video_url, page, video["url"])
             if not video_url:
-                log.error("No video URL for fight '%s', skipping.", fight["name"])
+                log.error("Could not find media URL for '%s'", video["name"])
                 return
-
-            log.info("Video URL for '%s': %s", fight["name"], video_url)
+            log.info("Media URL: %s", video_url)
             await download_video(video_url, output_path, session=session)
-
         except Exception as exc:
-            log.error("Failed to process fight '%s': %s", fight["name"], exc, exc_info=True)
+            log.error("Failed '%s': %s", video["name"], exc, exc_info=True)
+        finally:
+            await page.close()
 
 
 # ---------------------------------------------------------------------------
-# Main orchestration
+# Playlist orchestration
 # ---------------------------------------------------------------------------
 
-async def run(
+async def run_playlists(
     email: str,
     password: str,
+    playlist_urls: list[str],
     *,
-    max_events: int | None = None,
+    max_fights: int | None = None,
     headless: bool = True,
 ) -> None:
     """
-    Full end-to-end scrape:
-      1. Launch browser & authenticate
-      2. Discover events
-      3. For each event, extract the fight card
-      4. Download each fight video (bounded concurrency)
+    Main entry point for playlist-based scraping.
+
+    For each playlist URL:
+      - Authenticate (once, reusing session)
+      - Scrape the video listing (with scroll-to-bottom)
+      - Download each video in parallel (bounded by MAX_CONCURRENT_DOWNLOADS)
     """
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
     sem = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
@@ -572,47 +641,49 @@ async def run(
     async with aiohttp.ClientSession(connector=connector) as http_session:
         async with async_playwright() as pw:
             browser, context = await build_context(pw, headless=headless)
-
             try:
-                # One page is reused for navigation; fights need isolated pages
-                # so we don't lose the event-page state.
                 nav_page: Page = await context.new_page()
                 await ensure_authenticated(nav_page, email, password)
 
-                # ── Event discovery ──────────────────────────────────────
-                events = await discover_events(nav_page, max_events=max_events)
+                total_downloaded = 0
 
-                for event in events:
-                    log.info("=== Event: %s ===", event["name"])
-                    fights = await extract_fight_links(nav_page, event["url"])
+                for playlist_url in playlist_urls:
+                    log.info("=" * 60)
+                    log.info("Playlist: %s", playlist_url)
 
-                    if not fights:
-                        log.warning("No fights found for event '%s'.", event["name"])
+                    playlist_name, videos = await scrape_playlist_videos(
+                        nav_page, playlist_url, max_videos=max_fights
+                    )
+                    if not videos:
+                        log.warning("No videos found – skipping playlist.")
                         continue
 
-                    # ── Parallel fight downloads ──────────────────────────
-                    # Each fight gets its own page so video interception is isolated
-                    tasks: list[asyncio.Task] = []
-                    for fight in fights:
-                        fight_page = await context.new_page()
+                    output_dir = OUTPUT_ROOT / sanitize(playlist_name)
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    log.info(
+                        "Downloading %d videos into '%s'", len(videos), output_dir
+                    )
 
-                        async def _task(fp=fight_page, f=fight):
-                            try:
-                                await scrape_and_download_fight(
-                                    fp, f, event["name"], sem, http_session
-                                )
-                            finally:
-                                await fp.close()
+                    tasks = [
+                        asyncio.create_task(
+                            process_video(context, v, output_dir, sem, http_session)
+                        )
+                        for v in videos
+                    ]
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                        tasks.append(asyncio.create_task(_task()))
+                    succeeded = sum(1 for r in results if not isinstance(r, Exception))
+                    total_downloaded += succeeded
+                    log.info(
+                        "Playlist done: %d/%d succeeded.", succeeded, len(videos)
+                    )
 
-                    await asyncio.gather(*tasks, return_exceptions=True)
+                log.info("=" * 60)
+                log.info("All playlists complete. Total videos processed: %d", total_downloaded)
 
             finally:
                 await context.close()
                 await browser.close()
-
-    log.info("All done. Files saved under %s/", OUTPUT_ROOT)
 
 
 # ---------------------------------------------------------------------------
@@ -620,20 +691,34 @@ async def run(
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    email = os.environ.get("UFC_EMAIL") or input("UFC Fight Pass email: ")
+    email    = os.environ.get("UFC_EMAIL")    or input("UFC Fight Pass email: ")
     password = os.environ.get("UFC_PASSWORD") or input("UFC Fight Pass password: ")
 
-    # Optional: limit scraping scope for testing
-    max_events_env = os.environ.get("UFC_MAX_EVENTS")
-    max_events = int(max_events_env) if max_events_env else None
+    # Allow overriding the playlist list via env var (comma-separated URLs)
+    playlists_env = os.environ.get("UFC_PLAYLISTS")
+    playlist_urls = (
+        [u.strip() for u in playlists_env.split(",") if u.strip()]
+        if playlists_env
+        else TITLE_FIGHT_PLAYLISTS
+    )
+
+    # UFC_MAX_FIGHTS limits videos *per playlist* (handy for smoke-testing)
+    max_fights_env = os.environ.get("UFC_MAX_FIGHTS")
+    max_fights = int(max_fights_env) if max_fights_env else None
 
     headless = os.environ.get("UFC_HEADLESS", "1") != "0"
 
+    log.info(
+        "Starting – %d playlists, max_fights=%s, headless=%s",
+        len(playlist_urls), max_fights, headless,
+    )
+
     asyncio.run(
-        run(
+        run_playlists(
             email,
             password,
-            max_events=max_events,
+            playlist_urls,
+            max_fights=max_fights,
             headless=headless,
         )
     )
