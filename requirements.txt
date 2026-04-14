@@ -20,6 +20,10 @@ supabase>=2.4.0
 httpx>=0.27.0
 beautifulsoup4>=4.12
 
+# UFC Fight Pass scraper (ufc_fight_pass_scraper)
+playwright>=1.44.0           # async browser automation (run: playwright install chromium)
+aiohttp>=3.9.0               # async HTTP client for MP4 streaming downloads
+
 # Optional: faster ONNX/TensorRT export (comment out if not needed)
 # onnx>=1.16
 # onnxruntime-gpu>=1.18
