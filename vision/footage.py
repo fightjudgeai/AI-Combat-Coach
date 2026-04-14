@@ -26,6 +26,7 @@ metadata.json schema:
     "finish_method": "ko" | "tko" | "submission" | "decision" | null,
     "tags": ["full_fight", "pfc", "championship"],
     "youtube_url": "https://...",          // optional, used if video not local
+    "azure_url": "azure://<container>/<blob-path>",  // optional, preferred over youtube_url
     "is_benchmark": false
   }
 """
@@ -47,8 +48,9 @@ class FightFootageItem:
     fight_dir:     Path
     event_slug:    str          # e.g. "pfc_50"
     fight_slug:    str          # e.g. "fight_01_hunt_vs_jones"
-    video_path:    Optional[Path]   # None if only a YouTube URL
+    video_path:    Optional[Path]   # None if only a remote URL
     youtube_url:   Optional[str]
+    azure_url:     Optional[str]    # azure://<container>/<blob-path>
     fighter_ids:   List[Optional[str]]   # UUIDs (may be None if not in fighters table yet)
     fighter_names: List[str]
     corner:        List[str]    # ["red", "blue"]
@@ -59,19 +61,29 @@ class FightFootageItem:
 
     @property
     def source(self) -> str:
-        """Return the best available video source string for the pipeline."""
+        """Return the best available video source string for the pipeline.
+
+        Priority: local file → Azure Blob → YouTube
+        """
         if self.video_path is not None and self.video_path.exists():
             return str(self.video_path)
+        if self.azure_url:
+            return self.azure_url
         if self.youtube_url:
             return self.youtube_url
         raise FileNotFoundError(
             f"No video source for {self.fight_slug}: "
-            f"video_path={self.video_path}, youtube_url={self.youtube_url}"
+            f"video_path={self.video_path}, azure_url={self.azure_url}, "
+            f"youtube_url={self.youtube_url}"
         )
 
     @property
     def has_source(self) -> bool:
-        return (self.video_path is not None and self.video_path.exists()) or bool(self.youtube_url)
+        return (
+            (self.video_path is not None and self.video_path.exists())
+            or bool(self.azure_url)
+            or bool(self.youtube_url)
+        )
 
 
 def scan_footage(root: Path) -> Iterator[FightFootageItem]:
@@ -144,6 +156,7 @@ def _load_item(
         fight_slug     = fight_dir.name,
         video_path     = video_path,
         youtube_url    = meta.get("youtube_url"),
+        azure_url      = meta.get("azure_url"),
         fighter_ids    = fighter_ids[:2],
         fighter_names  = fighter_names[:2],
         corner         = corner[:2],

@@ -1,7 +1,14 @@
 """
 vision/ingest.py
-Resolve a video source (local path, S3 URI, YouTube URL) to a local file path.
-Returns a pathlib.Path ready for OpenCV / frame extraction.
+Resolve a video source (local path, S3 URI, Azure Blob URI, YouTube URL) to a
+local file path.  Returns a pathlib.Path ready for OpenCV / frame extraction.
+
+Azure Blob URIs use the scheme:
+    azure://<container>/<blob/path/video.mp4>
+
+The storage account is resolved from the environment variable
+AZURE_STORAGE_CONNECTION_STRING (preferred) or the pair
+AZURE_STORAGE_ACCOUNT_NAME + AZURE_STORAGE_ACCOUNT_KEY.
 """
 from __future__ import annotations
 
@@ -24,6 +31,8 @@ _YT_RE = re.compile(
 def detect_source_type(source: str) -> str:
     if source.startswith("s3://"):
         return "s3"
+    if source.startswith("azure://"):
+        return "azure"
     if _YT_RE.search(source):
         return "youtube"
     return "local"
@@ -53,6 +62,9 @@ def resolve_video(source: str, workdir: Optional[Path] = None) -> tuple[Path, st
     if src_type == "s3":
         return _download_s3(source, workdir), src_type
 
+    if src_type == "azure":
+        return _download_azure_blob(source, workdir), src_type
+
     if src_type == "youtube":
         return _download_youtube(source, workdir), src_type
 
@@ -77,6 +89,49 @@ def _download_s3(uri: str, workdir: Path) -> Path:
 
     s3 = boto3.client("s3")
     s3.download_file(bucket, key, str(dest))
+    return dest
+
+
+# ---------------------------------------------------------------------------
+# Azure Blob Storage download
+# ---------------------------------------------------------------------------
+
+def _download_azure_blob(uri: str, workdir: Path) -> Path:
+    """Download azure://<container>/<blob-path> to workdir."""
+    try:
+        from azure.storage.blob import BlobServiceClient
+    except ImportError:
+        raise ImportError(
+            "azure-storage-blob required for Azure sources: "
+            "pip install azure-storage-blob"
+        )
+
+    # Parse  azure://container/path/to/video.mp4
+    parsed = urllib.parse.urlparse(uri)
+    container = parsed.netloc
+    blob_name = parsed.path.lstrip("/")
+    filename = Path(blob_name).name
+    dest = workdir / filename
+
+    conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+    if conn_str:
+        service = BlobServiceClient.from_connection_string(conn_str)
+    else:
+        account = os.environ.get("AZURE_STORAGE_ACCOUNT_NAME")
+        key = os.environ.get("AZURE_STORAGE_ACCOUNT_KEY")
+        if not account or not key:
+            raise EnvironmentError(
+                "Set AZURE_STORAGE_CONNECTION_STRING or both "
+                "AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY"
+            )
+        service = BlobServiceClient(
+            account_url=f"https://{account}.blob.core.windows.net",
+            credential=key,
+        )
+
+    blob_client = service.get_blob_client(container=container, blob=blob_name)
+    with dest.open("wb") as fh:
+        fh.write(blob_client.download_blob().readall())
     return dest
 
 

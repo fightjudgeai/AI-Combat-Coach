@@ -41,6 +41,12 @@ COPY migrations/ migrations/
 #   SUPABASE_URL
 #   SUPABASE_SERVICE_KEY
 #   FOOTAGE_ROOT   (default: /footage  — mount your fight_footage dir here)
+#
+# Azure Blob Storage (required when video sources use azure:// URIs):
+#   AZURE_STORAGE_CONNECTION_STRING   (preferred — from Azure portal → Access keys)
+#   — or both of —
+#   AZURE_STORAGE_ACCOUNT_NAME
+#   AZURE_STORAGE_ACCOUNT_KEY
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app

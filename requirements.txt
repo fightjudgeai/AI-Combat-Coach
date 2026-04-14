@@ -12,6 +12,7 @@ lap>=0.5.12                  # BoT-SORT / ByteTrack lap assignment (ultralytics 
 # Video sources
 yt-dlp>=2024.1.0             # YouTube download
 boto3>=1.34                  # S3 download
+azure-storage-blob>=12.19.0  # Azure Blob Storage download/upload
 
 # Supabase
 supabase>=2.4.0
