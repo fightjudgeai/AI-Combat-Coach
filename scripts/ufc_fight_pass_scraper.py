@@ -56,17 +56,16 @@ from playwright.async_api import (
 # ---------------------------------------------------------------------------
 
 TITLE_FIGHT_PLAYLISTS: list[str] = [
-    "https://ufcfightpass.com/playlist/22872",
-    "https://ufcfightpass.com/playlist/22970",
-    "https://ufcfightpass.com/playlist/22971",
-    "https://ufcfightpass.com/playlist/22972",
-    "https://ufcfightpass.com/playlist/22974",
-    "https://ufcfightpass.com/playlist/23085",
-    "https://ufcfightpass.com/playlist/23086",
-    "https://ufcfightpass.com/playlist/23088",
-    "https://ufcfightpass.com/playlist/23158",
-    "https://ufcfightpass.com/playlist/23159",
-    "https://ufcfightpass.com/playlist/23160",
+    "https://ufcfightpass.com/playlist/13383",
+    "https://ufcfightpass.com/playlist/2608",
+    "https://ufcfightpass.com/playlist/21286",
+    "https://ufcfightpass.com/playlist/12324",
+    "https://ufcfightpass.com/playlist/18480",
+    "https://ufcfightpass.com/playlist/13592",
+    "https://ufcfightpass.com/playlist/13916",
+    "https://ufcfightpass.com/playlist/14160",
+    "https://ufcfightpass.com/playlist/22328",
+    "https://ufcfightpass.com/playlist/3148",
 ]
 
 # ---------------------------------------------------------------------------
