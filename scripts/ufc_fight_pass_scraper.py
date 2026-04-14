@@ -207,7 +207,8 @@ async def login(page: Page, email: str, password: str) -> bool:
     Saves cookies to COOKIES_FILE on success so future runs skip this step.
     """
     log.info("Navigating to login page…")
-    await page.goto(LOGIN_URL, wait_until="networkidle", timeout=60_000)
+    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60_000)
+    await asyncio.sleep(2)  # allow React to hydrate the login form
 
     email_sel = 'input[type="email"], input[name="email"], input[id*="email"]'
     await page.wait_for_selector(email_sel, timeout=15_000)
@@ -298,7 +299,8 @@ async def scrape_playlist_videos(
         (playlist_name, [{'url': str, 'name': str}, …])
     """
     log.info("Opening playlist: %s", playlist_url)
-    await page.goto(playlist_url, wait_until="networkidle", timeout=60_000)
+    await page.goto(playlist_url, wait_until="domcontentloaded", timeout=60_000)
+    await asyncio.sleep(3)  # allow React to render the video grid
 
     # ── Extract playlist title ────────────────────────────────────────────
     # Fight Pass uses various heading selectors; try most-specific first.
@@ -407,7 +409,8 @@ async def _intercept_video_url(page: Page, video_url: str) -> str | None:
     page.on("request", _on_request)
 
     log.info("Loading video page: %s", video_url)
-    await page.goto(video_url, wait_until="networkidle", timeout=60_000)
+    await page.goto(video_url, wait_until="domcontentloaded", timeout=60_000)
+    await asyncio.sleep(2)  # allow the video player to initialise
 
     # Give the JS player time to initialise and fire its first manifest request
     await asyncio.sleep(4)
